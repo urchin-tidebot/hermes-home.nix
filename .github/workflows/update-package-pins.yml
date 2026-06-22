@@ -1,0 +1,50 @@
+name: Update package pins
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Weekly on Mondays.
+    - cron: '20 8 * * 1'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-package-pins:
+    name: Update package pins
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Enable Nix cache
+        uses: DeterminateSystems/magic-nix-cache-action@main
+        with:
+          use-flakehub: disabled
+
+      - name: Update package pins
+        run: python3 scripts/update-package-pins.py
+
+      - name: Check formatting
+        run: git ls-files -z '*.nix' | xargs -0 nix fmt -- --check
+
+      - name: Run flake checks
+        run: nix flake check --show-trace
+
+      - name: Create update PR
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: automation/update-package-pins
+          delete-branch: true
+          title: Update package pins
+          commit-message: Update package pins
+          body: |
+            Automated update of package source pins.
+
+            Verification:
+            - `git ls-files -z '*.nix' | xargs -0 nix fmt -- --check`
+            - `nix flake check --show-trace`

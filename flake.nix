@@ -27,6 +27,7 @@
       homeManagerModules = {
         default = self.homeManagerModules.hermes-agent;
         hermes-agent = import ./modules/hermes-agent/home-manager.nix;
+        honcho = import ./modules/honcho/home-manager.nix;
       };
 
       checks = eachSystem (
@@ -69,6 +70,21 @@
               ./tests/managed-cleanup-home.nix
             ];
           };
+          honchoConfig = home-manager.lib.homeManagerConfiguration {
+            inherit pkgs;
+            modules = [
+              self.homeManagerModules.honcho
+              ./tests/honcho-home.nix
+            ];
+          };
+          honchoApiExecStart = honchoConfig.config.systemd.user.services.honcho-api.Service.ExecStart;
+          honchoSetupExecStart = honchoConfig.config.systemd.user.services.honcho-setup.Service.ExecStart;
+          honchoPostgresExecStart =
+            honchoConfig.config.systemd.user.services.honcho-postgres.Service.ExecStart;
+          honchoRedisExecStart = honchoConfig.config.systemd.user.services.honcho-redis.Service.ExecStart;
+          honchoApiEnvironment = builtins.toJSON honchoConfig.config.systemd.user.services.honcho-api.Service.Environment;
+          honchoApiAfter = builtins.toJSON honchoConfig.config.systemd.user.services.honcho-api.Unit.After;
+          honchoEnvironmentFile = builtins.toJSON honchoConfig.config.systemd.user.services.honcho-api.Service.EnvironmentFile;
           basicExecStart = builtins.toJSON basicConfig.config.systemd.user.services.hermes-gateway.Service.ExecStart;
         in
         {
@@ -84,6 +100,53 @@
           '';
         }
         // lib.optionalAttrs pkgs.stdenv.isLinux {
+          honcho-home = honchoConfig.activationPackage;
+          honcho-api-execstart = pkgs.runCommand "honcho-api-execstart-check" { } ''
+            grep -F -- 'uv run --frozen --no-sync --no-group dev fastapi run --host 127.0.0.1 --port 24880 src/main.py' ${lib.escapeShellArg honchoApiExecStart}
+            case ${lib.escapeShellArg honchoPostgresExecStart} in
+              *"postgres"*"-p 55432"*) ;;
+              *)
+                echo "unexpected postgres ExecStart: ${lib.escapeShellArg honchoPostgresExecStart}" >&2
+                exit 1
+                ;;
+            esac
+            case ${lib.escapeShellArg honchoRedisExecStart} in
+              *"redis-server"*"--port 6380"*) ;;
+              *)
+                echo "unexpected redis ExecStart: ${lib.escapeShellArg honchoRedisExecStart}" >&2
+                exit 1
+                ;;
+            esac
+            grep -F -- 'CREATE EXTENSION IF NOT EXISTS vector' ${lib.escapeShellArg honchoSetupExecStart}
+            case ${lib.escapeShellArg honchoApiAfter} in
+              *"honcho-postgres.service"*"honcho-redis.service"*) ;;
+              *)
+                echo "unexpected honcho-api After: ${lib.escapeShellArg honchoApiAfter}" >&2
+                exit 1
+                ;;
+            esac
+            case ${lib.escapeShellArg honchoApiEnvironment} in
+              *"DB_CONNECTION_URI=postgresql+psycopg://honcho@127.0.0.1:55432/honcho"*) ;;
+              *)
+                echo "unexpected honcho DB env: ${lib.escapeShellArg honchoApiEnvironment}" >&2
+                exit 1
+                ;;
+            esac
+            case ${lib.escapeShellArg honchoApiEnvironment} in
+              *"CACHE_URL=redis://127.0.0.1:6380/0?suppress=true"*) ;;
+              *)
+                echo "unexpected honcho cache env: ${lib.escapeShellArg honchoApiEnvironment}" >&2
+                exit 1
+                ;;
+            esac
+            case ${lib.escapeShellArg honchoEnvironmentFile} in
+              *"/run/secrets/honcho.env"*) touch "$out" ;;
+              *)
+                echo "unexpected EnvironmentFile: ${lib.escapeShellArg honchoEnvironmentFile}" >&2
+                exit 1
+                ;;
+            esac
+          '';
           basic = basicConfig.activationPackage;
           executable-only = executableOnlyConfig.activationPackage;
           gateway-execstart = pkgs.runCommand "hermes-gateway-execstart-check" { } ''
