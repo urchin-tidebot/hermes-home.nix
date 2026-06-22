@@ -13,9 +13,13 @@ Early design/prototype. The module evaluates and has a basic Home Manager check,
 - `programs.hermes-agent` Home Manager module.
 - Optional package installation via `home.packages`.
 - Declarative `HERMES_HOME` directory creation.
-- Declarative `config.yaml` from a Nix attrset.
+- Declarative `config.yaml` from a Nix attrset, deep-merged into existing config by default.
 - `.env` assembly from non-secret Nix attrs plus activation-time secret files.
+- Optional auth seed file for `auth.json`.
 - Optional `systemd.user.services.hermes-gateway` service.
+- Gateway service `PATH` composition with Hermes plus `extraPackages`.
+- Declarative `mcpServers`, rendered into Hermes `settings.mcp_servers`.
+- Declarative `extraPlugins`, symlinked into `HERMES_HOME/plugins` as `nix-managed-*`.
 - Declarative `gateway_voice_mode.json` for voice replies by platform target.
 - Optional Edge TTS command-provider helper for Nix/PEP 668 environments where Hermes' lazy dependency check is not ideal.
 - Declarative Hermes documents under `HERMES_HOME`, such as `SOUL.md` and memory files.
@@ -87,8 +91,9 @@ programs.hermes-agent.voice.edgeTts = {
 ## Design notes
 
 - The module intentionally defaults `hermesHome` to `~/.hermes` because that matches the current Hermes CLI/gateway user-level layout and makes migration easier.
-- `settings` are rendered as JSON and installed as `config.yaml`; YAML parsers accept JSON as valid YAML.
+- `settings` are rendered as JSON and deep-merged into `config.yaml` by default; generated Nix keys win while user/runtime keys are preserved. Set `mergeConfig = false` or provide `configFile` when you want replacement semantics.
 - `environmentFiles` are read at activation time so secrets do not enter the Nix store.
+- `mcpServers`, `extraPackages`, `extraPlugins`, `authFile`, and config merging intentionally mirror the relevant user-level pieces of upstream `services.hermes-agent`.
 - The Home Manager module is user-level only. For a system-level `/var/lib/hermes` deployment, prefer upstream's NixOS module.
 
 ## References and licenses

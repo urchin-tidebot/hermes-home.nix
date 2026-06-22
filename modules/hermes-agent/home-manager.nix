@@ -21,6 +21,18 @@ let
 
   cfg = config.programs.hermes-agent;
 
+  effectivePackage =
+    if cfg.package == null then
+      null
+    else if cfg.extraPythonPackages == [ ] && cfg.extraDependencyGroups == [ ] then
+      cfg.package
+    else
+      cfg.package.override {
+        inherit (cfg) extraPythonPackages extraDependencyGroups;
+      };
+
+  configMergeScript = pkgs.callPackage ./configMergeScript.nix { };
+
   deepConfigType = types.mkOptionType {
     name = "hermes-config-attrs";
     description = "Hermes config attrset, deep-merged with lib.recursiveUpdate";
@@ -93,7 +105,44 @@ let
       };
     };
 
-  renderedSettings = lib.recursiveUpdate cfg.settings voiceSettings;
+  mcpServerSettings = lib.mapAttrs (
+    _name: srv:
+    optionalAttrs (srv.command != null) { inherit (srv) command args; }
+    // optionalAttrs (srv.env != { }) { inherit (srv) env; }
+    // optionalAttrs (srv.url != null) { inherit (srv) url; }
+    // optionalAttrs (srv.headers != { }) { inherit (srv) headers; }
+    // optionalAttrs (srv.auth != null) { inherit (srv) auth; }
+    // {
+      inherit (srv) enabled;
+    }
+    // optionalAttrs (srv.timeout != null) { inherit (srv) timeout; }
+    // optionalAttrs (srv.connectTimeout != null) { connect_timeout = srv.connectTimeout; }
+    // optionalAttrs (srv.tools != null) {
+      tools = lib.filterAttrs (_: value: value != [ ]) {
+        inherit (srv.tools) include exclude;
+      };
+    }
+    // optionalAttrs (srv.sampling != null) {
+      sampling = lib.filterAttrs (_: value: value != null && value != [ ]) {
+        inherit (srv.sampling)
+          enabled
+          model
+          timeout
+          ;
+        max_tokens_cap = srv.sampling.maxTokensCap;
+        max_rpm = srv.sampling.maxRpm;
+        max_tool_rounds = srv.sampling.maxToolRounds;
+        allowed_models = srv.sampling.allowedModels;
+        log_level = srv.sampling.logLevel;
+      };
+    }
+  ) cfg.mcpServers;
+
+  renderedSettings = lib.recursiveUpdate (lib.recursiveUpdate cfg.settings (
+    optionalAttrs (cfg.mcpServers != { }) {
+      mcp_servers = mcpServerSettings;
+    }
+  )) voiceSettings;
   generatedConfigFile = pkgs.writeText "hermes-config.json" (builtins.toJSON renderedSettings);
   effectiveConfigFile = if cfg.configFile != null then cfg.configFile else generatedConfigFile;
   shouldManageConfig = cfg.manageConfig && (cfg.configFile != null || renderedSettings != { });
@@ -117,12 +166,25 @@ let
   ++ cfg.gateway.extraArgs;
 
   gatewayCommand = lib.concatStringsSep " " (
-    [ (shellQuote (lib.getExe cfg.package)) ] ++ map shellQuote gatewayArgs
+    [ (shellQuote (lib.getExe effectivePackage)) ] ++ map shellQuote gatewayArgs
+  );
+
+  servicePath = lib.makeBinPath (
+    (optional (effectivePackage != null) effectivePackage)
+    ++ [
+      pkgs.bash
+      pkgs.coreutils
+      pkgs.git
+    ]
+    ++ cfg.extraPackages
   );
 
   serviceEnvironment = [
+    "HOME=${config.home.homeDirectory}"
     "HERMES_HOME=${cfg.hermesHome}"
+    "HERMES_MANAGED=true"
     "MESSAGING_CWD=${cfg.workingDirectory}"
+    "PATH=${servicePath}"
   ]
   ++ mapAttrsToList (name: value: "${name}=${value}") cfg.service.environment;
 
@@ -145,6 +207,43 @@ in
       type = types.bool;
       default = true;
       description = "Install the Hermes package into home.packages when package is non-null.";
+    };
+
+    extraPackages = mkOption {
+      type = types.listOf types.package;
+      default = [ ];
+      description = ''
+        Extra packages available to Hermes, the gateway service PATH, and the
+        user's Home Manager profile. Useful for terminal tools, skills, and cron jobs.
+      '';
+    };
+
+    extraPythonPackages = mkOption {
+      type = types.listOf types.package;
+      default = [ ];
+      description = ''
+        Python packages passed to package.override when the Hermes package supports
+        extraPythonPackages, matching the upstream NixOS module.
+      '';
+    };
+
+    extraDependencyGroups = mkOption {
+      type = types.listOf types.str;
+      default = [ ];
+      description = ''
+        Optional dependency groups passed to package.override when supported by the
+        Hermes package, such as "voice" or other groups declared upstream.
+      '';
+    };
+
+    extraPlugins = mkOption {
+      type = types.listOf types.package;
+      default = [ ];
+      description = ''
+        Directory-based Hermes plugin packages to symlink into
+        $HERMES_HOME/plugins as nix-managed-* entries. Each package should
+        contain plugin.yaml at its root.
+      '';
     };
 
     hermesHome = mkOption {
@@ -196,6 +295,30 @@ in
       '';
     };
 
+    mergeConfig = mkOption {
+      type = types.bool;
+      default = true;
+      description = ''
+        Deep-merge generated settings into an existing config.yaml, preserving
+        user/runtime keys while Nix-declared keys win. Ignored when configFile is set.
+      '';
+    };
+
+    authFile = mkOption {
+      type = types.nullOr types.path;
+      default = null;
+      description = ''
+        Path to an auth.json seed file. Copied to $HERMES_HOME/auth.json only
+        when missing unless authFileForceOverwrite is true.
+      '';
+    };
+
+    authFileForceOverwrite = mkOption {
+      type = types.bool;
+      default = false;
+      description = "Always overwrite auth.json from authFile on activation.";
+    };
+
     environment = mkOption {
       type = types.attrsOf types.str;
       default = { };
@@ -234,6 +357,141 @@ in
       '';
     };
 
+    mcpServers = mkOption {
+      type = types.attrsOf (
+        types.submodule {
+          options = {
+            command = mkOption {
+              type = types.nullOr types.str;
+              default = null;
+              description = "MCP server command for stdio transport.";
+            };
+            args = mkOption {
+              type = types.listOf types.str;
+              default = [ ];
+              description = "MCP stdio command arguments.";
+            };
+            env = mkOption {
+              type = types.attrsOf types.str;
+              default = { };
+              description = "Environment variables for stdio MCP server process.";
+            };
+            url = mkOption {
+              type = types.nullOr types.str;
+              default = null;
+              description = "MCP server URL for HTTP/Streamable HTTP transport.";
+            };
+            headers = mkOption {
+              type = types.attrsOf types.str;
+              default = { };
+              description = "HTTP headers for remote MCP servers.";
+            };
+            auth = mkOption {
+              type = types.nullOr (types.enum [ "oauth" ]);
+              default = null;
+              description = "Authentication method for remote MCP servers.";
+            };
+            enabled = mkOption {
+              type = types.bool;
+              default = true;
+              description = "Enable or disable this MCP server.";
+            };
+            timeout = mkOption {
+              type = types.nullOr types.int;
+              default = null;
+              description = "Tool call timeout in seconds.";
+            };
+            connectTimeout = mkOption {
+              type = types.nullOr types.int;
+              default = null;
+              description = "Initial connection timeout in seconds.";
+            };
+            tools = mkOption {
+              type = types.nullOr (
+                types.submodule {
+                  options = {
+                    include = mkOption {
+                      type = types.listOf types.str;
+                      default = [ ];
+                      description = "Tool allowlist for this server.";
+                    };
+                    exclude = mkOption {
+                      type = types.listOf types.str;
+                      default = [ ];
+                      description = "Tool blocklist for this server.";
+                    };
+                  };
+                }
+              );
+              default = null;
+              description = "Filter which MCP tools are exposed.";
+            };
+            sampling = mkOption {
+              type = types.nullOr (
+                types.submodule {
+                  options = {
+                    enabled = mkOption {
+                      type = types.bool;
+                      default = true;
+                      description = "Enable sampling.";
+                    };
+                    model = mkOption {
+                      type = types.nullOr types.str;
+                      default = null;
+                      description = "Sampling model override.";
+                    };
+                    maxTokensCap = mkOption {
+                      type = types.nullOr types.int;
+                      default = null;
+                      description = "Max tokens per sampling request.";
+                    };
+                    timeout = mkOption {
+                      type = types.nullOr types.int;
+                      default = null;
+                      description = "Sampling timeout in seconds.";
+                    };
+                    maxRpm = mkOption {
+                      type = types.nullOr types.int;
+                      default = null;
+                      description = "Max sampling requests per minute.";
+                    };
+                    maxToolRounds = mkOption {
+                      type = types.nullOr types.int;
+                      default = null;
+                      description = "Max tool-use rounds per sampling request.";
+                    };
+                    allowedModels = mkOption {
+                      type = types.listOf types.str;
+                      default = [ ];
+                      description = "Models the server may request.";
+                    };
+                    logLevel = mkOption {
+                      type = types.nullOr (
+                        types.enum [
+                          "debug"
+                          "info"
+                          "warning"
+                        ]
+                      );
+                      default = null;
+                      description = "Audit log level for sampling requests.";
+                    };
+                  };
+                }
+              );
+              default = null;
+              description = "Sampling configuration for server-initiated LLM requests.";
+            };
+          };
+        }
+      );
+      default = { };
+      description = ''
+        MCP server configurations merged into settings.mcp_servers. Each server
+        uses either stdio (command/args) or HTTP (url) transport.
+      '';
+    };
+
     gateway = {
       enable = mkEnableOption "Hermes gateway user service";
 
@@ -247,6 +505,18 @@ in
         type = types.listOf types.str;
         default = [ ];
         description = "Additional arguments appended to `hermes gateway run`.";
+      };
+
+      restart = mkOption {
+        type = types.str;
+        default = "on-failure";
+        description = "systemd Restart= policy for the gateway user service.";
+      };
+
+      restartSec = mkOption {
+        type = types.str;
+        default = "5s";
+        description = "systemd RestartSec= value for the gateway user service.";
       };
 
       voiceModes = mkOption {
@@ -337,9 +607,18 @@ in
           assertion = !cfg.voice.edgeTts.enable || edgeTtsCommand != null;
           message = "programs.hermes-agent.voice.edgeTts requires either voice.edgeTts.command or voice.edgeTts.python.";
         }
+        {
+          assertion =
+            let
+              names = map lib.getName cfg.extraPlugins;
+            in
+            (lib.length names) == (lib.length (lib.unique names));
+          message = "programs.hermes-agent.extraPlugins contains duplicate plugin names.";
+        }
       ];
 
-      home.packages = mkIf (cfg.addToPackages && cfg.package != null) [ cfg.package ];
+      home.packages =
+        (optional (cfg.addToPackages && effectivePackage != null) effectivePackage) ++ cfg.extraPackages;
 
       home.activation.hermesAgent = lib.hm.dag.entryAfter [ "writeBoundary" ] (
         ''
@@ -347,10 +626,19 @@ in
           hermes_home=${shellQuote cfg.hermesHome}
           install -d -m 700 "$hermes_home"
           install -d -m 700 "$hermes_home/audio_cache" "$hermes_home/scripts" "$hermes_home/memories"
+          install -d -m 700 "$hermes_home/cron" "$hermes_home/sessions" "$hermes_home/logs" "$hermes_home/plugins"
         ''
-        + optionalString shouldManageConfig ''
-          install -m 600 ${shellQuote effectiveConfigFile} "$hermes_home/config.yaml"
-        ''
+        + optionalString shouldManageConfig (
+          if cfg.configFile != null || !cfg.mergeConfig then
+            ''
+              install -m 600 ${shellQuote effectiveConfigFile} "$hermes_home/config.yaml"
+            ''
+          else
+            ''
+              ${configMergeScript} ${shellQuote generatedConfigFile} "$hermes_home/config.yaml"
+              chmod 600 "$hermes_home/config.yaml"
+            ''
+        )
         + optionalString (cfg.environment != { } || cfg.environmentFiles != [ ]) (
           ''
             tmp_env="$(${pkgs.coreutils}/bin/mktemp)"
@@ -372,9 +660,39 @@ in
             install -m 600 "$tmp_env" "$hermes_home/.env"
           ''
         )
+        + optionalString (cfg.authFile != null) (
+          if cfg.authFileForceOverwrite then
+            ''
+              install -m 600 ${shellQuote cfg.authFile} "$hermes_home/auth.json"
+            ''
+          else
+            ''
+              if [ ! -f "$hermes_home/auth.json" ]; then
+                install -m 600 ${shellQuote cfg.authFile} "$hermes_home/auth.json"
+              fi
+            ''
+        )
         + optionalString (cfg.gateway.voiceModes != { }) ''
           install -m 600 ${shellQuote voiceModesFile} "$hermes_home/gateway_voice_mode.json"
         ''
+        + optionalString (cfg.extraPlugins != [ ]) ''
+          find "$hermes_home/plugins" -maxdepth 1 -type l -name 'nix-managed-*' -delete 2>/dev/null || true
+        ''
+        + lib.concatStringsSep "" (
+          map (
+            plugin:
+            let
+              name = lib.getName plugin;
+            in
+            ''
+              if [ ! -f ${shellQuote plugin}/plugin.yaml ]; then
+                echo "ERROR: extraPlugins entry '${plugin}' has no plugin.yaml" >&2
+                exit 1
+              fi
+              ln -sfn ${shellQuote plugin} "$hermes_home/plugins/nix-managed-${name}"
+            ''
+          ) cfg.extraPlugins
+        )
         + lib.concatStringsSep "" (
           mapAttrsToList (
             name: value:
@@ -406,8 +724,9 @@ in
           WorkingDirectory = cfg.workingDirectory;
           Environment = serviceEnvironment;
           ExecStart = gatewayCommand;
-          Restart = "on-failure";
-          RestartSec = "5s";
+          Restart = cfg.gateway.restart;
+          RestartSec = cfg.gateway.restartSec;
+          UMask = "0077";
         };
 
         Install = {
