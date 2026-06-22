@@ -62,11 +62,26 @@
               ./tests/activation-paths-home.nix
             ];
           };
+          managedCleanupConfig = home-manager.lib.homeManagerConfiguration {
+            inherit pkgs;
+            modules = [
+              self.homeManagerModules.default
+              ./tests/managed-cleanup-home.nix
+            ];
+          };
           basicExecStart = builtins.toJSON basicConfig.config.systemd.user.services.hermes-gateway.Service.ExecStart;
         in
         {
           config-merge = import ./tests/config-merge.nix { inherit pkgs; };
           activation-paths = activationPathsConfig.activationPackage;
+          managed-cleanup = pkgs.runCommand "hermes-managed-cleanup-check" { } ''
+            activate=${managedCleanupConfig.activationPackage}/activate
+            grep -F -- 'rm -f "$hermes_home/config.yaml"' "$activate"
+            grep -F -- 'rm -f "$hermes_home/.env"' "$activate"
+            grep -F -- 'rm -f "$hermes_home/gateway_voice_mode.json"' "$activate"
+            grep -F -- 'nix-managed-*' "$activate"
+            touch "$out"
+          '';
         }
         // lib.optionalAttrs pkgs.stdenv.isLinux {
           basic = basicConfig.activationPackage;

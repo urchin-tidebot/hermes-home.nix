@@ -160,6 +160,12 @@ let
   generatedConfigFile = pkgs.writeText "hermes-config.json" (builtins.toJSON renderedSettings);
   effectiveConfigFile = if cfg.configFile != null then cfg.configFile else generatedConfigFile;
   shouldManageConfig = cfg.manageConfig && (cfg.configFile != null || renderedSettings != { });
+  shouldRemoveConfig =
+    cfg.manageConfig && cfg.removeConfigWhenEmpty && cfg.configFile == null && renderedSettings == { };
+  shouldManageEnvironment =
+    cfg.manageEnvironment || cfg.environment != { } || cfg.environmentFiles != [ ];
+  shouldManageGatewayVoiceModes = cfg.manageGatewayVoiceModes || cfg.gateway.voiceModes != { };
+  shouldManagePlugins = cfg.managePlugins || cfg.extraPlugins != [ ];
 
   generatedEnvFile = pkgs.writeText "hermes-env" (
     lib.concatStringsSep "\n" (mapAttrsToList (name: value: "${name}=${value}") cfg.environment)
@@ -353,6 +359,16 @@ in
       '';
     };
 
+    removeConfigWhenEmpty = mkOption {
+      type = types.bool;
+      default = false;
+      description = ''
+        Remove $HERMES_HOME/config.yaml when manageConfig is true and neither
+        configFile nor generated settings are declared. This is opt-in to avoid
+        deleting a runtime-managed Hermes config by surprise during migration.
+      '';
+    };
+
     authFile = mkOption {
       type = types.nullOr types.str;
       default = null;
@@ -390,6 +406,36 @@ in
       description = ''
         Secret environment files concatenated into $HERMES_HOME/.env at
         activation time. Paths are read at activation, not copied into the Nix store.
+      '';
+    };
+
+    manageEnvironment = mkOption {
+      type = types.bool;
+      default = false;
+      description = ''
+        Treat $HERMES_HOME/.env as Home Manager-owned even when environment and
+        environmentFiles are empty. When enabled with no environment sources,
+        activation removes the previously managed .env to avoid stale state.
+      '';
+    };
+
+    managePlugins = mkOption {
+      type = types.bool;
+      default = false;
+      description = ''
+        Treat nix-managed plugin links as Home Manager-owned even when
+        extraPlugins is empty. When enabled with no plugins, activation removes
+        stale $HERMES_HOME/plugins/nix-managed-* symlinks.
+      '';
+    };
+
+    manageGatewayVoiceModes = mkOption {
+      type = types.bool;
+      default = false;
+      description = ''
+        Treat $HERMES_HOME/gateway_voice_mode.json as Home Manager-owned even
+        when gateway.voiceModes is empty. When enabled with no voice modes,
+        activation removes the stale managed file.
       '';
     };
 
@@ -715,26 +761,34 @@ in
               chmod 600 "$hermes_home/config.yaml"
             ''
         )
-        + optionalString (cfg.environment != { } || cfg.environmentFiles != [ ]) (
-          ''
-            tmp_env="$(${pkgs.coreutils}/bin/mktemp)"
-            cleanup_env() { rm -f "$tmp_env"; }
-            trap cleanup_env EXIT
-          ''
-          + optionalString (cfg.environment != { }) ''
-            cat ${shellQuote generatedEnvFile} >> "$tmp_env"
-          ''
-          + lib.concatMapStringsSep "\n" (path: ''
-            if [ -f ${shellQuote path} ]; then
-              cat ${shellQuote path} >> "$tmp_env"
-              printf '\n' >> "$tmp_env"
-            else
-              printf '%s\n' ${shellQuote "warning: Hermes environment file not found: ${path}"} >&2
-            fi
-          '') cfg.environmentFiles
-          + ''
-            install -m 600 "$tmp_env" "$hermes_home/.env"
-          ''
+        + optionalString shouldRemoveConfig ''
+          rm -f "$hermes_home/config.yaml"
+        ''
+        + optionalString shouldManageEnvironment (
+          if cfg.environment != { } || cfg.environmentFiles != [ ] then
+            ''
+              tmp_env="$(${pkgs.coreutils}/bin/mktemp)"
+              cleanup_env() { rm -f "$tmp_env"; }
+              trap cleanup_env EXIT
+            ''
+            + optionalString (cfg.environment != { }) ''
+              cat ${shellQuote generatedEnvFile} >> "$tmp_env"
+            ''
+            + lib.concatMapStringsSep "\n" (path: ''
+              if [ -f ${shellQuote path} ]; then
+                cat ${shellQuote path} >> "$tmp_env"
+                printf '\n' >> "$tmp_env"
+              else
+                printf '%s\n' ${shellQuote "warning: Hermes environment file not found: ${path}"} >&2
+              fi
+            '') cfg.environmentFiles
+            + ''
+              install -m 600 "$tmp_env" "$hermes_home/.env"
+            ''
+          else
+            ''
+              rm -f "$hermes_home/.env"
+            ''
         )
         + optionalString (cfg.authFile != null) (
           if cfg.authFileForceOverwrite then
@@ -748,10 +802,17 @@ in
               fi
             ''
         )
-        + optionalString (cfg.gateway.voiceModes != { }) ''
-          install -m 600 ${shellQuote voiceModesFile} "$hermes_home/gateway_voice_mode.json"
-        ''
-        + optionalString (cfg.extraPlugins != [ ]) ''
+        + optionalString shouldManageGatewayVoiceModes (
+          if cfg.gateway.voiceModes != { } then
+            ''
+              install -m 600 ${shellQuote voiceModesFile} "$hermes_home/gateway_voice_mode.json"
+            ''
+          else
+            ''
+              rm -f "$hermes_home/gateway_voice_mode.json"
+            ''
+        )
+        + optionalString shouldManagePlugins ''
           find "$hermes_home/plugins" -maxdepth 1 -type l -name 'nix-managed-*' -delete 2>/dev/null || true
         ''
         + lib.concatStringsSep "" (
