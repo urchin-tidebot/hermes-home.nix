@@ -33,16 +33,34 @@
         system:
         let
           pkgs = import nixpkgs { inherit system; };
+          basicConfig = home-manager.lib.homeManagerConfiguration {
+            inherit pkgs;
+            modules = [
+              self.homeManagerModules.default
+              ./tests/basic-home.nix
+            ];
+          };
+          executableOnlyConfig = home-manager.lib.homeManagerConfiguration {
+            inherit pkgs;
+            modules = [
+              self.homeManagerModules.default
+              ./tests/executable-only-home.nix
+            ];
+          };
+          basicExecStart = builtins.toJSON basicConfig.config.systemd.user.services.hermes-gateway.Service.ExecStart;
         in
         {
-          basic =
-            (home-manager.lib.homeManagerConfiguration {
-              inherit pkgs;
-              modules = [
-                self.homeManagerModules.default
-                ./tests/basic-home.nix
-              ];
-            }).activationPackage;
+          basic = basicConfig.activationPackage;
+          executable-only = executableOnlyConfig.activationPackage;
+          gateway-execstart = pkgs.runCommand "hermes-gateway-execstart-check" { } ''
+            case ${pkgs.lib.escapeShellArg basicExecStart} in
+              *"/bin/hermes gateway run --replace"*) touch "$out" ;;
+              *)
+                echo "unexpected ExecStart: ${pkgs.lib.escapeShellArg basicExecStart}" >&2
+                exit 1
+                ;;
+            esac
+          '';
         }
       );
 
