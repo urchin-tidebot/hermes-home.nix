@@ -61,6 +61,7 @@
                 ;;
             esac
           '';
+          config-merge = import ./tests/config-merge.nix { inherit pkgs; };
         }
       );
 
