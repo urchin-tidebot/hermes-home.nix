@@ -7,8 +7,13 @@
 
   programs.hermes-agent = {
     enable = true;
-    package = pkgs.writeShellScriptBin "hermes" ''
+    package = pkgs.runCommand "hermes-agent" { } ''
+      mkdir -p $out/bin
+      cat > $out/bin/hermes <<'EOF'
+      #!${pkgs.runtimeShell}
       echo "fake hermes $@"
+      EOF
+      chmod +x $out/bin/hermes
     '';
     extraPackages = [ pkgs.git ];
 

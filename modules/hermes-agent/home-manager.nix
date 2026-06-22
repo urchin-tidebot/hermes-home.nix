@@ -31,6 +31,14 @@ let
         inherit (cfg) extraPythonPackages extraDependencyGroups;
       };
 
+  effectiveExecutable =
+    if cfg.executable != null then
+      cfg.executable
+    else if effectivePackage != null then
+      lib.getExe' effectivePackage "hermes"
+    else
+      null;
+
   configMergeScript = pkgs.callPackage ./configMergeScript.nix { };
 
   deepConfigType = types.mkOptionType {
@@ -166,7 +174,7 @@ let
   ++ cfg.gateway.extraArgs;
 
   gatewayCommand = lib.concatStringsSep " " (
-    [ (shellQuote (lib.getExe effectivePackage)) ] ++ map shellQuote gatewayArgs
+    [ (shellQuote effectiveExecutable) ] ++ map shellQuote gatewayArgs
   );
 
   servicePath = lib.makeBinPath (
@@ -201,6 +209,16 @@ in
         the upstream Hermes flake, or another overlay-provided package.
       '';
       example = literalExpression "pkgs.llm-agents.hermes-agent";
+    };
+
+    executable = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      description = ''
+        Hermes CLI executable used by the gateway service. Defaults to the
+        `hermes` binary from package when package is set.
+      '';
+      example = literalExpression ''"${pkgs.llm-agents.hermes-agent}/bin/hermes"'';
     };
 
     addToPackages = mkOption {
@@ -600,8 +618,12 @@ in
     {
       assertions = [
         {
-          assertion = cfg.package != null || (!cfg.addToPackages && !cfg.gateway.enable);
-          message = "programs.hermes-agent.package must be set when installing Hermes or enabling the gateway service.";
+          assertion = cfg.package != null || !cfg.addToPackages;
+          message = "programs.hermes-agent.package must be set when installing Hermes with addToPackages.";
+        }
+        {
+          assertion = !cfg.gateway.enable || effectiveExecutable != null;
+          message = "programs.hermes-agent.package or executable must be set when enabling the gateway service.";
         }
         {
           assertion = !cfg.voice.edgeTts.enable || edgeTtsCommand != null;
