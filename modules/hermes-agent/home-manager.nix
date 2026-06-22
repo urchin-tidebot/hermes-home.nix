@@ -213,6 +213,16 @@ let
     && !(lib.hasInfix "\n" name)
     && lib.all (component: component != "" && component != "." && component != "..") components;
 
+  validMcpServerTransport =
+    srv:
+    let
+      hasCommand = srv.command != null;
+      hasUrl = srv.url != null;
+    in
+    (hasCommand != hasUrl)
+    && (hasCommand || (srv.args == [ ] && srv.env == { }))
+    && (hasUrl || (srv.headers == { } && srv.auth == null));
+
 in
 {
   options.programs.hermes-agent = {
@@ -661,6 +671,10 @@ in
         {
           assertion = lib.all validDocumentPath (lib.attrNames cfg.documents);
           message = "programs.hermes-agent.documents keys must be safe relative paths without empty, '.', '..', absolute, trailing-slash, or newline components.";
+        }
+        {
+          assertion = lib.all validMcpServerTransport (lib.attrValues cfg.mcpServers);
+          message = "Each programs.hermes-agent.mcpServers entry must set exactly one of command or url, use stdio-only args/env only with command, and use HTTP-only headers/auth only with url.";
         }
       ];
 
