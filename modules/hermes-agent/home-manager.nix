@@ -93,7 +93,13 @@ let
     if cfg.voice.edgeTts.command != null then
       cfg.voice.edgeTts.command
     else if cfg.voice.edgeTts.python != null then
-      "${cfg.voice.edgeTts.python} ${generatedEdgeTtsWrapper} {input_path} {output_path} ${cfg.voice.edgeTts.voice}"
+      lib.concatStringsSep " " [
+        (shellQuote cfg.voice.edgeTts.python)
+        (shellQuote generatedEdgeTtsWrapper)
+        "{input_path}"
+        "{output_path}"
+        (shellQuote cfg.voice.edgeTts.voice)
+      ]
     else
       null;
 
@@ -195,6 +201,17 @@ let
     "PATH=${servicePath}"
   ]
   ++ mapAttrsToList (name: value: "${name}=${value}") cfg.service.environment;
+
+  validDocumentPath =
+    name:
+    let
+      components = lib.splitString "/" name;
+    in
+    name != ""
+    && !(lib.hasPrefix "/" name)
+    && !(lib.hasSuffix "/" name)
+    && !(lib.hasInfix "\n" name)
+    && lib.all (component: component != "" && component != "." && component != "..") components;
 
 in
 {
@@ -641,6 +658,10 @@ in
             (lib.length names) == (lib.length (lib.unique names));
           message = "programs.hermes-agent.extraPlugins contains duplicate plugin names.";
         }
+        {
+          assertion = lib.all validDocumentPath (lib.attrNames cfg.documents);
+          message = "programs.hermes-agent.documents keys must be safe relative paths without empty, '.', '..', absolute, trailing-slash, or newline components.";
+        }
       ];
 
       home.packages =
@@ -679,7 +700,7 @@ in
               cat ${shellQuote path} >> "$tmp_env"
               printf '\n' >> "$tmp_env"
             else
-              echo "warning: Hermes environment file not found: ${path}" >&2
+              printf '%s\n' ${shellQuote "warning: Hermes environment file not found: ${path}"} >&2
             fi
           '') cfg.environmentFiles
           + ''
@@ -728,9 +749,10 @@ in
                   value
                 else
                   pkgs.writeText "hermes-document-${baseNameOf name}" value;
+              destination = "${cfg.hermesHome}/${name}";
             in
             ''
-              install -D -m 600 ${shellQuote source} "$hermes_home/${name}"
+              install -D -m 600 ${shellQuote source} ${shellQuote destination}
             ''
           ) cfg.documents
         )
