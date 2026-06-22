@@ -32,6 +32,7 @@
       HERMES_TEST = "1";
     };
     documents."SOUL.md" = "You are a test Hermes.";
+    documents."notes/shell $(safe).md" = "Document paths are shell-quoted.";
     gateway = {
       enable = true;
       voiceModes."telegram:-1001234567890" = true;

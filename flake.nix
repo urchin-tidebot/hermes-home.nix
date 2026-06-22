@@ -72,6 +72,10 @@
                 ;;
             esac
           '';
+          document-path-quoting = pkgs.runCommand "hermes-document-path-quoting-check" { } ''
+            grep -F -- ${lib.escapeShellArg "'/tmp/hermes-home-test/.hermes/notes/shell $(safe).md'"} ${basicConfig.activationPackage}/activate
+            touch "$out"
+          '';
         }
         // lib.optionalAttrs (!pkgs.stdenv.isLinux) {
           non-gateway = nonGatewayConfig.activationPackage;
