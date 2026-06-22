@@ -91,8 +91,9 @@ programs.hermes-agent.voice.edgeTts = {
 ## Design notes
 
 - The module intentionally defaults `hermesHome` to `~/.hermes` because that matches the current Hermes CLI/gateway user-level layout and makes migration easier.
-- `settings` are rendered as JSON and deep-merged into `config.yaml` by default; generated Nix keys win while user/runtime keys are preserved. Set `mergeConfig = false` or provide `configFile` when you want replacement semantics.
-- `environmentFiles` are read at activation time so secrets do not enter the Nix store.
+- `settings` are rendered as JSON in the Nix store and deep-merged into `config.yaml` by default; generated Nix keys win while user/runtime keys are preserved. Set `mergeConfig = false` or provide `configFile` when you want replacement semantics.
+- Do not put secrets in `settings`, `environment`, `mcpServers.env`, `mcpServers.headers`, `documents`, or any Nix path values. Nix-rendered values are generally world-readable through the Nix store.
+- `environmentFiles`, `configFile`, and `authFile` are plain string paths read at activation time, so `/run/secrets/...`-style inputs do not enter the Nix store unless you explicitly interpolate a store path.
 - `mcpServers`, `extraPackages`, `extraPlugins`, `authFile`, and config merging intentionally mirror the relevant user-level pieces of upstream `services.hermes-agent`.
 - The Home Manager module is user-level only. For a system-level `/var/lib/hermes` deployment, prefer upstream's NixOS module.
 - `gateway.enable` currently requires Linux/systemd. Darwin users can still use non-gateway package/config/document options; launchd support would be a future addition.

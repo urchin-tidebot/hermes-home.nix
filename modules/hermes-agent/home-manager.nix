@@ -309,9 +309,11 @@ in
       type = deepConfigType;
       default = { };
       description = ''
-        Declarative Hermes config attrset. This is rendered as JSON, which is
-        valid YAML, and written to $HERMES_HOME/config.yaml when manageConfig is true.
-        Multiple module definitions are merged deeply.
+        Declarative Hermes config attrset. This is rendered as JSON in the Nix
+        store, which is valid YAML, and written to $HERMES_HOME/config.yaml
+        when manageConfig is true. Multiple module definitions are merged
+        deeply. Do not put secrets here; use activation-time paths or runtime
+        Hermes configuration for credentials.
       '';
       example = literalExpression ''
         {
@@ -323,11 +325,13 @@ in
     };
 
     configFile = mkOption {
-      type = types.nullOr types.path;
+      type = types.nullOr types.str;
       default = null;
       description = ''
-        Existing config file to install as $HERMES_HOME/config.yaml. When set,
-        this takes precedence over generated settings.
+        Existing config file to install as $HERMES_HOME/config.yaml. This path
+        is read at activation time and is not copied into the Nix store unless
+        you explicitly interpolate a store path. When set, this takes precedence
+        over generated settings.
       '';
     };
 
@@ -350,11 +354,13 @@ in
     };
 
     authFile = mkOption {
-      type = types.nullOr types.path;
+      type = types.nullOr types.str;
       default = null;
       description = ''
-        Path to an auth.json seed file. Copied to $HERMES_HOME/auth.json only
-        when missing unless authFileForceOverwrite is true.
+        Path to an auth.json seed file. This path is read at activation time
+        and is not copied into the Nix store unless you explicitly interpolate
+        a store path. Copied to $HERMES_HOME/auth.json only when missing unless
+        authFileForceOverwrite is true.
       '';
     };
 
@@ -419,7 +425,12 @@ in
             env = mkOption {
               type = types.attrsOf types.str;
               default = { };
-              description = "Environment variables for stdio MCP server process.";
+              description = ''
+                Environment variables for stdio MCP server process. Values are
+                rendered into config.yaml through settings and are not
+                secret-safe; prefer wrapper commands or runtime secret loading
+                for credentials.
+              '';
             };
             url = mkOption {
               type = types.nullOr types.str;
@@ -429,7 +440,11 @@ in
             headers = mkOption {
               type = types.attrsOf types.str;
               default = { };
-              description = "HTTP headers for remote MCP servers.";
+              description = ''
+                HTTP headers for remote MCP servers. Values are rendered into
+                config.yaml through settings and are not secret-safe; avoid
+                literal Authorization tokens here.
+              '';
             };
             auth = mkOption {
               type = types.nullOr (types.enum [ "oauth" ]);

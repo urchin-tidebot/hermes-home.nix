@@ -55,10 +55,18 @@
               ./tests/non-gateway-home.nix
             ];
           };
+          activationPathsConfig = home-manager.lib.homeManagerConfiguration {
+            inherit pkgs;
+            modules = [
+              self.homeManagerModules.default
+              ./tests/activation-paths-home.nix
+            ];
+          };
           basicExecStart = builtins.toJSON basicConfig.config.systemd.user.services.hermes-gateway.Service.ExecStart;
         in
         {
           config-merge = import ./tests/config-merge.nix { inherit pkgs; };
+          activation-paths = activationPathsConfig.activationPackage;
         }
         // lib.optionalAttrs pkgs.stdenv.isLinux {
           basic = basicConfig.activationPackage;
