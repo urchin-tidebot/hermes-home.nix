@@ -618,6 +618,10 @@ in
     {
       assertions = [
         {
+          assertion = !cfg.gateway.enable || pkgs.stdenv.isLinux;
+          message = "programs.hermes-agent.gateway.enable currently requires Linux/systemd.";
+        }
+        {
           assertion = cfg.package != null || !cfg.addToPackages;
           message = "programs.hermes-agent.package must be set when installing Hermes with addToPackages.";
         }

@@ -95,6 +95,7 @@ programs.hermes-agent.voice.edgeTts = {
 - `environmentFiles` are read at activation time so secrets do not enter the Nix store.
 - `mcpServers`, `extraPackages`, `extraPlugins`, `authFile`, and config merging intentionally mirror the relevant user-level pieces of upstream `services.hermes-agent`.
 - The Home Manager module is user-level only. For a system-level `/var/lib/hermes` deployment, prefer upstream's NixOS module.
+- `gateway.enable` currently requires Linux/systemd. Darwin users can still use non-gateway package/config/document options; launchd support would be a future addition.
 
 ## References and licenses
 
