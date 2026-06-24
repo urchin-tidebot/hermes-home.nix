@@ -91,6 +91,10 @@
             hermesModule = self.homeManagerModules.default;
             honchoModule = self.homeManagerModules.honcho;
           };
+          hermesStatefulMigrationVmTest = import ./tests/vm-hermes-stateful-migration.nix {
+            inherit pkgs home-manager;
+            hermesModule = self.homeManagerModules.default;
+          };
           honchoE2eVmTest = import ./tests/vm-honcho-e2e.nix {
             inherit pkgs home-manager;
             honchoModule = self.homeManagerModules.honcho;
@@ -168,6 +172,7 @@
             touch "$out"
           '';
           vm-hermes-agent = hermesAgentVmTest;
+          vm-hermes-stateful-migration = hermesStatefulMigrationVmTest;
           vm-honcho-e2e = honchoE2eVmTest;
         }
         // lib.optionalAttrs (!pkgs.stdenv.isLinux) {

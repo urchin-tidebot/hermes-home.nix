@@ -18,6 +18,8 @@ Early design/prototype. The module evaluates and has a basic Home Manager check,
 - Optional auth seed file for `auth.json`.
 - Optional `systemd.user.services.hermes-gateway` service.
 - Gateway service `PATH` composition with Hermes plus `extraPackages`.
+- Gateway `unitConfig`/`serviceConfig` passthroughs for preserving existing
+  stateful `systemd --user` lifecycle semantics during migration.
 - Declarative `mcpServers`, rendered into Hermes `settings.mcp_servers`.
 - Declarative `extraPlugins`, symlinked into `HERMES_HOME/plugins` as `nix-managed-*`.
 - Declarative `gateway_voice_mode.json` for voice replies by platform target.
@@ -57,6 +59,12 @@ Import the module in your Home Manager modules list:
       voiceModes = {
         "telegram:-1001234567890" = true;
         "telegram:-1001234567890:42" = true;
+      };
+      serviceConfig = {
+        Restart = "always";
+        KillMode = "mixed";
+        ExecReload = "${pkgs.coreutils}/bin/kill -USR1 $MAINPID";
+        TimeoutStopSec = "210s";
       };
     };
   };
@@ -125,6 +133,11 @@ The Honcho source pin lives in `modules/honcho/honcho-pkg.nix`. It is intentiona
 - Do not put secrets in `settings`, `environment`, `mcpServers.env`, `mcpServers.headers`, `documents`, or any Nix path values. Nix-rendered values are generally world-readable through the Nix store.
 - `environmentFiles`, `configFile`, and `authFile` are plain string paths read at activation time, so `/run/secrets/...`-style inputs do not enter the Nix store unless you explicitly interpolate a store path.
 - Removal semantics are opt-in for potentially user-owned runtime files: set `removeConfigWhenEmpty`, `manageEnvironment`, `manageGatewayVoiceModes`, or `managePlugins` when you want Home Manager to remove stale `config.yaml`, `.env`, `gateway_voice_mode.json`, or `nix-managed-*` plugin links after the corresponding declarations become empty.
+- For stateful migrations, keep one owner for `hermes-gateway.service`: remove
+  any hand-written `systemd.user.services.hermes-gateway` declaration and carry
+  required lifecycle knobs through `programs.hermes-agent.gateway.unitConfig`,
+  `programs.hermes-agent.gateway.serviceConfig`, and
+  `programs.hermes-agent.service.environment`.
 - `mcpServers`, `extraPackages`, `extraPlugins`, `authFile`, and config merging intentionally mirror the relevant user-level pieces of upstream `services.hermes-agent`.
 - The Home Manager module is user-level only. For a system-level `/var/lib/hermes` deployment, prefer upstream's NixOS module.
 - `services.honcho.localServices.postgres` and `services.honcho.localServices.redis` run local user-level backing services for convenience; they are intentionally bound to localhost and store state under XDG/Honcho data directories rather than managing system users, firewall, or `/var/lib` state.
