@@ -23,6 +23,7 @@ Early design/prototype. The module evaluates and has a basic Home Manager check,
 - Declarative `gateway_voice_mode.json` for voice replies by platform target.
 - Optional Edge TTS command-provider helper for Nix/PEP 668 environments where Hermes' lazy dependency check is not ideal.
 - Declarative Hermes documents under `HERMES_HOME`, such as `SOUL.md` and memory files.
+- `services.honcho` Home Manager module for Plastic Labs Honcho, with a standalone auto-updatable Honcho source pin.
 
 ## Usage
 
@@ -88,6 +89,35 @@ programs.hermes-agent.voice.edgeTts = {
 };
 ```
 
+### Honcho Home Manager module
+
+The flake also exposes `homeManagerModules.honcho`, a user-level Home Manager module that renders Honcho `config.toml` settings and manages `systemd.user` services. It can either point Honcho at externally managed PostgreSQL/Redis services or run local per-user PostgreSQL+pgvector and Redis services for single-user deployments.
+
+```nix
+{
+  imports = [ inputs.hermes-home.homeManagerModules.honcho ];
+
+  services.honcho = {
+    enable = true;
+    environmentFiles = [ "/run/secrets/honcho.env" ];
+
+    # Optional user-level backing services. Leave these disabled when pointing
+    # Honcho at services managed elsewhere.
+    localServices.postgres = true;
+    localServices.redis = true;
+
+    # Arbitrary Honcho config.toml settings can be layered over the module's
+    # runtime defaults. Do not put secrets here; use environmentFiles instead.
+    settings = {
+      llm.ANTHROPIC_BASE_URL = "https://api.example.invalid/anthropic";
+      dialectic.MAX_OUTPUT_TOKENS = 4096;
+    };
+  };
+}
+```
+
+The Honcho source pin lives in `modules/honcho/honcho-pkg.nix`. It is intentionally separate from the service module so the generalized package-pin updater (`scripts/update-package-pins.py` and `.github/workflows/update-package-pins.yml`) can update the upstream tag/hash in a weekly automated PR.
+
 ## Design notes
 
 - The module intentionally defaults `hermesHome` to `~/.hermes` because that matches the current Hermes CLI/gateway user-level layout and makes migration easier.
@@ -97,6 +127,7 @@ programs.hermes-agent.voice.edgeTts = {
 - Removal semantics are opt-in for potentially user-owned runtime files: set `removeConfigWhenEmpty`, `manageEnvironment`, `manageGatewayVoiceModes`, or `managePlugins` when you want Home Manager to remove stale `config.yaml`, `.env`, `gateway_voice_mode.json`, or `nix-managed-*` plugin links after the corresponding declarations become empty.
 - `mcpServers`, `extraPackages`, `extraPlugins`, `authFile`, and config merging intentionally mirror the relevant user-level pieces of upstream `services.hermes-agent`.
 - The Home Manager module is user-level only. For a system-level `/var/lib/hermes` deployment, prefer upstream's NixOS module.
+- `services.honcho.localServices.postgres` and `services.honcho.localServices.redis` run local user-level backing services for convenience; they are intentionally bound to localhost and store state under XDG/Honcho data directories rather than managing system users, firewall, or `/var/lib` state.
 - `gateway.enable` currently requires Linux/systemd. Darwin users can still use non-gateway package/config/document options; launchd support would be a future addition.
 
 ## References and licenses
@@ -107,6 +138,8 @@ This project borrows design ideas from the following public modules/configuratio
 - [yzx9/nix-config](https://github.com/yzx9/nix-config) — Apache-2.0 license. Home Manager `programs.hermes-agent` pattern, deep-merged settings, user service, env/doc handling.
 - [edmundmiller/dotfiles](https://github.com/edmundmiller/dotfiles) — MIT license. Richer Hermes Home Manager integration ideas: repo-managed Hermes config, auth/config synchronization, skins/hooks/secrets.
 - [yuanw/nix-home](https://github.com/yuanw/nix-home) — no repository license detected at the time of writing. Referenced only for high-level package/environment/gateway-service module shape; no code is copied.
+- [suderman/nixos](https://github.com/suderman/nixos) — no repository license detected at the time of writing. Consulted only to understand deployment requirements; the Honcho module implementation is written around Honcho's own configuration surface and user-level Home Manager services.
+- [plastic-labs/honcho](https://github.com/plastic-labs/honcho) — AGPL-3.0 license. This repository pins/fetches Honcho source but does not vendor it.
 
 ## Development
 
