@@ -86,6 +86,11 @@
           honchoApiAfter = builtins.toJSON honchoConfig.config.systemd.user.services.honcho-api.Unit.After;
           honchoEnvironmentFile = builtins.toJSON honchoConfig.config.systemd.user.services.honcho-api.Service.EnvironmentFile;
           basicExecStart = builtins.toJSON basicConfig.config.systemd.user.services.hermes-gateway.Service.ExecStart;
+          hermesAgentVmTest = import ./tests/vm-hermes-agent.nix {
+            inherit pkgs home-manager;
+            hermesModule = self.homeManagerModules.default;
+            honchoModule = self.homeManagerModules.honcho;
+          };
         in
         {
           config-merge = import ./tests/config-merge.nix { inherit pkgs; };
@@ -162,6 +167,7 @@
             grep -F -- ${lib.escapeShellArg "'/tmp/hermes-home-test/.hermes/notes/shell $(safe).md'"} ${basicConfig.activationPackage}/activate
             touch "$out"
           '';
+          vm-hermes-agent = hermesAgentVmTest;
         }
         // lib.optionalAttrs (!pkgs.stdenv.isLinux) {
           non-gateway = nonGatewayConfig.activationPackage;
