@@ -45,6 +45,108 @@ let
     MINIMAX_API_KEY=vm-minimax-key
     OPENROUTER_API_KEY=vm-openrouter-key
   '';
+
+  fakeHonchoSource = pkgs.runCommand "fake-honcho-source" { } ''
+    mkdir -p "$out/scripts" "$out/src"
+    cat > "$out/pyproject.toml" <<'EOF'
+    [project]
+    name = "fake-honcho-vm"
+    version = "0.0.0"
+    requires-python = ">=3.13"
+    dependencies = []
+
+    [dependency-groups]
+    dev = []
+    EOF
+    cat > "$out/uv.lock" <<'EOF'
+    version = 1
+    revision = 3
+    requires-python = ">=3.13"
+
+    [[package]]
+    name = "fake-honcho-vm"
+    version = "0.0.0"
+    source = { virtual = "." }
+
+    [package.metadata]
+
+    [package.metadata.requires-dev]
+    dev = []
+    EOF
+    cat > "$out/scripts/provision_db.py" <<'EOF'
+    from pathlib import Path
+    import os
+    import tomllib
+
+    home = Path(os.environ["HOME"])
+    instrumentation = home / "instrumentation"
+    instrumentation.mkdir(parents=True, exist_ok=True)
+    config = tomllib.loads(Path.cwd().joinpath("config.toml").read_text())
+    secret = os.environ.get("MINIMAX_API_KEY", "")
+    (instrumentation / "setup.log").write_text(
+        "provisioned=1\n"
+        f"db={config['db']['CONNECTION_URI']}\n"
+        f"cache={config['cache']['URL']}\n"
+        f"secret={secret}\n"
+    )
+    EOF
+    cat > "$out/src/deriver.py" <<'EOF'
+    from pathlib import Path
+    import os
+    import time
+
+    instrumentation = Path(os.environ["HOME"]) / "instrumentation"
+    instrumentation.mkdir(parents=True, exist_ok=True)
+    (instrumentation / "deriver.log").write_text("started=1\n")
+    while True:
+        time.sleep(3600)
+    EOF
+    touch "$out/src/__init__.py" "$out/src/main.py"
+  '';
+
+  fakeFastapi = pkgs.writeShellScript "fake-fastapi" ''
+        set -euo pipefail
+        host=127.0.0.1
+        port=8000
+        while [ "$#" -gt 0 ]; do
+          case "$1" in
+            --host)
+              host="$2"
+              shift 2
+              ;;
+            --port)
+              port="$2"
+              shift 2
+              ;;
+            *)
+              shift
+              ;;
+          esac
+        done
+        exec ${pkgs.python3}/bin/python - "$host" "$port" <<'PY'
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    import sys
+
+    host = sys.argv[1]
+    port = int(sys.argv[2])
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path in {"/", "/health", "/docs"}:
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b"ok\n")
+            else:
+                self.send_response(404)
+                self.end_headers()
+
+        def log_message(self, *args):
+            pass
+
+    ThreadingHTTPServer((host, port), Handler).serve_forever()
+    PY
+  '';
+
 in
 pkgs.testers.runNixOSTest {
   name = "hermes-agent-home-manager-vm";
@@ -149,6 +251,7 @@ pkgs.testers.runNixOSTest {
 
         services.honcho = {
           enable = true;
+          source = fakeHonchoSource;
           environmentFiles = [ "/etc/honcho-vm/honcho.env" ];
           localServices.postgres = true;
           localServices.redis = true;
@@ -239,7 +342,24 @@ pkgs.testers.runNixOSTest {
     machine.succeed("grep -F 'URL = \"redis://127.0.0.1:6380/0?suppress=true\"' /home/honcho-test/.config/honcho/config.toml")
     machine.succeed(f"{honcho_systemctl} cat honcho-api.service | grep -F 'EnvironmentFile=/etc/honcho-vm/honcho.env'")
 
-    machine.succeed(f"{honcho_systemctl} stop honcho-postgres.service honcho-redis.service")
+    machine.succeed(f"{honcho_systemctl} start honcho-setup.service")
+    machine.wait_until_succeeds(f"test \"$({honcho_systemctl} show honcho-setup.service -P Result)\" = success")
+    machine.succeed("grep -F 'provisioned=1' /home/honcho-test/.local/share/honcho/instrumentation/setup.log")
+    machine.succeed("grep -F 'secret=vm-minimax-key' /home/honcho-test/.local/share/honcho/instrumentation/setup.log")
+    machine.succeed("install -D -m 755 ${fakeFastapi} /home/honcho-test/.local/share/honcho/.venv/bin/fastapi && chown honcho-test:users /home/honcho-test/.local/share/honcho/.venv/bin/fastapi")
+
+    machine.succeed(f"{honcho_systemctl} start honcho-api.service honcho-deriver.service")
+    machine.wait_until_succeeds(f"{honcho_systemctl} is-active --quiet honcho-api.service")
+    machine.wait_until_succeeds(f"{honcho_systemctl} is-active --quiet honcho-deriver.service")
+    machine.wait_until_succeeds("${pkgs.curl}/bin/curl -fsS http://127.0.0.1:24880/health | grep -Fx ok")
+    machine.succeed("grep -F 'started=1' /home/honcho-test/.local/share/honcho/instrumentation/deriver.log")
+
+    machine.succeed(f"{honcho_systemctl} restart honcho-api.service honcho-deriver.service")
+    machine.wait_until_succeeds(f"{honcho_systemctl} is-active --quiet honcho-api.service")
+    machine.wait_until_succeeds(f"{honcho_systemctl} is-active --quiet honcho-deriver.service")
+    machine.wait_until_succeeds("${pkgs.curl}/bin/curl -fsS http://127.0.0.1:24880/docs | grep -Fx ok")
+
+    machine.succeed(f"{honcho_systemctl} stop honcho-api.service honcho-deriver.service honcho-postgres.service honcho-redis.service")
     machine.succeed(f"{user_systemctl} stop hermes-gateway.service")
   '';
 }

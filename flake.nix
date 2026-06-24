@@ -91,6 +91,10 @@
             hermesModule = self.homeManagerModules.default;
             honchoModule = self.homeManagerModules.honcho;
           };
+          honchoE2eVmTest = import ./tests/vm-honcho-e2e.nix {
+            inherit pkgs home-manager;
+            honchoModule = self.homeManagerModules.honcho;
+          };
         in
         {
           config-merge = import ./tests/config-merge.nix { inherit pkgs; };
@@ -164,6 +168,7 @@
             touch "$out"
           '';
           vm-hermes-agent = hermesAgentVmTest;
+          vm-honcho-e2e = honchoE2eVmTest;
         }
         // lib.optionalAttrs (!pkgs.stdenv.isLinux) {
           non-gateway = nonGatewayConfig.activationPackage;
