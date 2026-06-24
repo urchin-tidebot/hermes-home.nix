@@ -237,8 +237,8 @@ pkgs.testers.runNixOSTest {
     machine.succeed(f"{honcho_env} ${
       pkgs.postgresql.withPackages (ps: [ ps.pgvector ])
     }/bin/psql -h 127.0.0.1 -p 55432 -d honcho -tAc \"SELECT extname FROM pg_extension WHERE extname = 'vector'\" | grep -Fx vector")
-    machine.succeed(f"{honcho_systemctl} cat honcho-api.service | grep -F 'DB_CONNECTION_URI=postgresql+psycopg://honcho@127.0.0.1:55432/honcho'")
-    machine.succeed(f"{honcho_systemctl} cat honcho-api.service | grep -F 'CACHE_URL=redis://127.0.0.1:6380/0?suppress=true'")
+    machine.succeed("grep -F 'CONNECTION_URI = \"postgresql+psycopg://honcho@127.0.0.1:55432/honcho\"' /home/honcho-test/.config/honcho/config.toml")
+    machine.succeed("grep -F 'URL = \"redis://127.0.0.1:6380/0?suppress=true\"' /home/honcho-test/.config/honcho/config.toml")
     machine.succeed(f"{honcho_systemctl} cat honcho-api.service | grep -F 'EnvironmentFile=/etc/honcho-vm/honcho.env'")
 
     machine.succeed(f"{honcho_systemctl} stop honcho-postgres.service honcho-redis.service")

@@ -23,7 +23,7 @@ Early design/prototype. The module evaluates and has a basic Home Manager check,
 - Declarative `gateway_voice_mode.json` for voice replies by platform target.
 - Optional Edge TTS command-provider helper for Nix/PEP 668 environments where Hermes' lazy dependency check is not ideal.
 - Declarative Hermes documents under `HERMES_HOME`, such as `SOUL.md` and memory files.
-- `services.honcho` Home Manager module adapted for Plastic Labs Honcho, with a standalone auto-updatable Honcho source pin.
+- `services.honcho` Home Manager module for Plastic Labs Honcho, with a standalone auto-updatable Honcho source pin.
 
 ## Usage
 
@@ -91,7 +91,7 @@ programs.hermes-agent.voice.edgeTts = {
 
 ### Honcho Home Manager module
 
-The flake also exposes `homeManagerModules.honcho`, adapted from Suderman's Honcho NixOS module but converted to user-level Home Manager `systemd.user` services. It can either point Honcho at externally managed PostgreSQL/Redis services or run local per-user PostgreSQL+pgvector and Redis services for single-user deployments.
+The flake also exposes `homeManagerModules.honcho`, a user-level Home Manager module that renders Honcho `config.toml` settings and manages `systemd.user` services. It can either point Honcho at externally managed PostgreSQL/Redis services or run local per-user PostgreSQL+pgvector and Redis services for single-user deployments.
 
 ```nix
 {
@@ -105,6 +105,13 @@ The flake also exposes `homeManagerModules.honcho`, adapted from Suderman's Honc
     # Honcho at services managed elsewhere.
     postgres.enable = true;
     redis.enable = true;
+
+    # Arbitrary Honcho config.toml settings can be layered over the module's
+    # runtime defaults. Do not put secrets here; use environmentFiles instead.
+    settings = {
+      llm.ANTHROPIC_BASE_URL = "https://api.example.invalid/anthropic";
+      dialectic.MAX_OUTPUT_TOKENS = 4096;
+    };
   };
 }
 ```
@@ -131,7 +138,7 @@ This project borrows design ideas from the following public modules/configuratio
 - [yzx9/nix-config](https://github.com/yzx9/nix-config) — Apache-2.0 license. Home Manager `programs.hermes-agent` pattern, deep-merged settings, user service, env/doc handling.
 - [edmundmiller/dotfiles](https://github.com/edmundmiller/dotfiles) — MIT license. Richer Hermes Home Manager integration ideas: repo-managed Hermes config, auth/config synchronization, skins/hooks/secrets.
 - [yuanw/nix-home](https://github.com/yuanw/nix-home) — no repository license detected at the time of writing. Referenced only for high-level package/environment/gateway-service module shape; no code is copied.
-- [suderman/nixos](https://github.com/suderman/nixos) — no repository license detected at the time of writing. `services.honcho` is an adapted version of `modules/nixos/default/options/honcho.nix` with site-specific agenix/persistence/Traefik integration removed and the Honcho source pin split into `modules/honcho/honcho-pkg.nix`.
+- [suderman/nixos](https://github.com/suderman/nixos) — no repository license detected at the time of writing. Consulted only to understand deployment requirements; the Honcho module implementation is written around Honcho's own configuration surface and user-level Home Manager services.
 - [plastic-labs/honcho](https://github.com/plastic-labs/honcho) — AGPL-3.0 license. This repository pins/fetches Honcho source but does not vendor it.
 
 ## Development

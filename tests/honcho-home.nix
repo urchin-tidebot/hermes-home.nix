@@ -6,8 +6,10 @@
     environmentFiles = [ "/run/secrets/honcho.env" ];
     postgres.enable = true;
     redis.enable = true;
-    llm.baseUrl = "https://api.minimax.io/anthropic";
-    embeddings.baseUrl = "https://openrouter.ai/api/v1";
+    settings = {
+      llm.ANTHROPIC_BASE_URL = "https://api.minimax.io/anthropic";
+      embedding.model_config.overrides.base_url = "https://openrouter.ai/api/v1";
+    };
   };
 
   home.username = "honcho-test";

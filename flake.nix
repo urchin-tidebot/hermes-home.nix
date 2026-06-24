@@ -77,8 +77,8 @@
               ./tests/honcho-home.nix
             ];
           };
-          honchoApiExecStart = honchoConfig.config.systemd.user.services.honcho-api.Service.ExecStart;
-          honchoSetupExecStart = honchoConfig.config.systemd.user.services.honcho-setup.Service.ExecStart;
+          honchoApiExecStart = builtins.elemAt honchoConfig.config.systemd.user.services.honcho-api.Service.ExecStart 0;
+          honchoSetupExecStart = builtins.elemAt honchoConfig.config.systemd.user.services.honcho-setup.Service.ExecStart 0;
           honchoPostgresExecStart =
             honchoConfig.config.systemd.user.services.honcho-postgres.Service.ExecStart;
           honchoRedisExecStart = honchoConfig.config.systemd.user.services.honcho-redis.Service.ExecStart;
@@ -107,7 +107,9 @@
         // lib.optionalAttrs pkgs.stdenv.isLinux {
           honcho-home = honchoConfig.activationPackage;
           honcho-api-execstart = pkgs.runCommand "honcho-api-execstart-check" { } ''
-            grep -F -- 'uv run --frozen --no-sync --no-group dev fastapi run --host 127.0.0.1 --port 24880 src/main.py' ${lib.escapeShellArg honchoApiExecStart}
+            grep -F -- 'uv run --project' ${lib.escapeShellArg honchoApiExecStart}
+            grep -F -- '--frozen --no-sync --no-group dev fastapi run --host 127.0.0.1 --port 24880' ${lib.escapeShellArg honchoApiExecStart}
+            grep -F -- '/src/main.py' ${lib.escapeShellArg honchoApiExecStart}
             case ${lib.escapeShellArg honchoPostgresExecStart} in
               *"postgres"*"-p 55432"*) ;;
               *)
@@ -123,6 +125,7 @@
                 ;;
             esac
             grep -F -- 'CREATE EXTENSION IF NOT EXISTS vector' ${lib.escapeShellArg honchoSetupExecStart}
+            grep -F -- 'scripts/provision_db.py' ${lib.escapeShellArg honchoSetupExecStart}
             case ${lib.escapeShellArg honchoApiAfter} in
               *"honcho-postgres.service"*"honcho-redis.service"*) ;;
               *)
@@ -131,16 +134,9 @@
                 ;;
             esac
             case ${lib.escapeShellArg honchoApiEnvironment} in
-              *"DB_CONNECTION_URI=postgresql+psycopg://honcho@127.0.0.1:55432/honcho"*) ;;
+              *"PYTHON_DOTENV_DISABLED=1"*"UV_PROJECT_ENVIRONMENT=/tmp/honcho-home-test/.local/share/honcho/.venv"*) ;;
               *)
-                echo "unexpected honcho DB env: ${lib.escapeShellArg honchoApiEnvironment}" >&2
-                exit 1
-                ;;
-            esac
-            case ${lib.escapeShellArg honchoApiEnvironment} in
-              *"CACHE_URL=redis://127.0.0.1:6380/0?suppress=true"*) ;;
-              *)
-                echo "unexpected honcho cache env: ${lib.escapeShellArg honchoApiEnvironment}" >&2
+                echo "unexpected honcho runtime env: ${lib.escapeShellArg honchoApiEnvironment}" >&2
                 exit 1
                 ;;
             esac
