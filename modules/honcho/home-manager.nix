@@ -77,12 +77,13 @@ let
   generatedConfig = toml.generate "honcho-config.toml" renderedSettings;
   configDir = builtins.dirOf cfg.configPath;
 
-  uv = lib.getExe pkgs.uv;
-  python = lib.getExe pkgs.python313;
+  uv = lib.getExe cfg.uvPackage;
+  python = lib.getExe cfg.pythonPackage;
   runtimeEnvironment = {
     HOME = cfg.dataDir;
     PYTHONUNBUFFERED = "1";
     PYTHON_DOTENV_DISABLED = "1";
+    PYTHONPATH = cfg.source;
     UV_CACHE_DIR = "${cfg.cacheDir}/uv";
     UV_PROJECT_ENVIRONMENT = "${cfg.dataDir}/.venv";
     UV_PYTHON = python;
@@ -166,6 +167,22 @@ in
         Runtime environment files passed to Honcho services. Use these for API
         keys and other secrets; paths are strings consumed by systemd at runtime.
       '';
+    };
+
+    uvPackage = mkOption {
+      type = types.package;
+      default = pkgs.uv;
+      internal = true;
+      visible = false;
+      description = "uv package used by tests to inject a deterministic runner.";
+    };
+
+    pythonPackage = mkOption {
+      type = types.package;
+      default = pkgs.python313;
+      internal = true;
+      visible = false;
+      description = "Python package used by tests to inject a deterministic runtime.";
     };
 
     localServices = {
