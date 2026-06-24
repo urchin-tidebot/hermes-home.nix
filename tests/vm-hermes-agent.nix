@@ -150,10 +150,8 @@ pkgs.testers.runNixOSTest {
         services.honcho = {
           enable = true;
           environmentFiles = [ "/etc/honcho-vm/honcho.env" ];
-          setup.enable = false;
-          deriver.enable = false;
-          postgres.enable = true;
-          redis.enable = true;
+          localServices.postgres = true;
+          localServices.redis = true;
         };
       };
 

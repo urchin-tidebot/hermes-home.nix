@@ -103,8 +103,8 @@ The flake also exposes `homeManagerModules.honcho`, a user-level Home Manager mo
 
     # Optional user-level backing services. Leave these disabled when pointing
     # Honcho at services managed elsewhere.
-    postgres.enable = true;
-    redis.enable = true;
+    localServices.postgres = true;
+    localServices.redis = true;
 
     # Arbitrary Honcho config.toml settings can be layered over the module's
     # runtime defaults. Do not put secrets here; use environmentFiles instead.
@@ -127,7 +127,7 @@ The Honcho source pin lives in `modules/honcho/honcho-pkg.nix`. It is intentiona
 - Removal semantics are opt-in for potentially user-owned runtime files: set `removeConfigWhenEmpty`, `manageEnvironment`, `manageGatewayVoiceModes`, or `managePlugins` when you want Home Manager to remove stale `config.yaml`, `.env`, `gateway_voice_mode.json`, or `nix-managed-*` plugin links after the corresponding declarations become empty.
 - `mcpServers`, `extraPackages`, `extraPlugins`, `authFile`, and config merging intentionally mirror the relevant user-level pieces of upstream `services.hermes-agent`.
 - The Home Manager module is user-level only. For a system-level `/var/lib/hermes` deployment, prefer upstream's NixOS module.
-- `services.honcho.postgres.enable` and `services.honcho.redis.enable` run local user-level backing services for convenience; they are intentionally bound to localhost and store state under XDG/Honcho data directories rather than managing system users, firewall, or `/var/lib` state.
+- `services.honcho.localServices.postgres` and `services.honcho.localServices.redis` run local user-level backing services for convenience; they are intentionally bound to localhost and store state under XDG/Honcho data directories rather than managing system users, firewall, or `/var/lib` state.
 - `gateway.enable` currently requires Linux/systemd. Darwin users can still use non-gateway package/config/document options; launchd support would be a future addition.
 
 ## References and licenses
