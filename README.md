@@ -130,7 +130,7 @@ The Honcho source pin lives in `modules/honcho/honcho-pkg.nix`. It is intentiona
 
 - The module intentionally defaults `hermesHome` to `~/.hermes` because that matches the current Hermes CLI/gateway user-level layout and makes migration easier.
 - `settings` are rendered as JSON in the Nix store and deep-merged into `config.yaml` by default; generated Nix keys win while user/runtime keys are preserved. Set `mergeConfig = false` or provide `configFile` when you want replacement semantics.
-- Do not put secrets in `settings`, `environment`, `mcpServers.env`, `mcpServers.headers`, `documents`, or any Nix path values. Nix-rendered values are generally world-readable through the Nix store.
+- Do not put secrets in `settings`, `environment`, `service.environment`, `mcpServers.env`, `mcpServers.headers`, `documents`, or any Nix path values. Nix-rendered values are generally world-readable through the Nix store or generated units.
 - `environmentFiles`, `configFile`, and `authFile` are plain string paths read at activation time, so `/run/secrets/...`-style inputs do not enter the Nix store unless you explicitly interpolate a store path.
 - Removal semantics are opt-in for potentially user-owned runtime files: set `removeConfigWhenEmpty`, `manageEnvironment`, `manageGatewayVoiceModes`, or `managePlugins` when you want Home Manager to remove stale `config.yaml`, `.env`, `gateway_voice_mode.json`, or `nix-managed-*` plugin links after the corresponding declarations become empty.
 - For stateful migrations, keep one owner for `hermes-gateway.service`: remove
