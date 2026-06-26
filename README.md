@@ -154,6 +154,28 @@ This project borrows design ideas from the following public modules/configuratio
 - [suderman/nixos](https://github.com/suderman/nixos) — no repository license detected at the time of writing. Consulted only to understand deployment requirements; the Honcho module implementation is written around Honcho's own configuration surface and user-level Home Manager services.
 - [plastic-labs/honcho](https://github.com/plastic-labs/honcho) — AGPL-3.0 license. This repository pins/fetches Honcho source but does not vendor it.
 
+## Post-migration TODOs
+
+These are intentionally tracked in this in-flight migration PR so the first
+Home Manager switch can stay conservative without losing follow-up work:
+
+- TODO: After the module-owned gateway has run successfully for a few days,
+  promote selected stable `~/.hermes/config.yaml` keys into
+  `programs.hermes-agent.settings` and leave provider credentials/runtime state
+  in runtime files or secret paths.
+- TODO: Decide whether `gateway_voice_mode.json` should be fully declarative
+  via `programs.hermes-agent.gateway.voiceModes`; before enabling it, confirm
+  the current Telegram target list is complete.
+- TODO: Move non-secret, stable `.env` values into
+  `programs.hermes-agent.environment` and keep secrets in activation-time
+  `environmentFiles` only.
+- TODO: Audit runtime plugin usage and convert stable plugins to
+  `extraPlugins`; only enable `managePlugins` once all `nix-managed-*` links are
+  known to be declarative.
+- TODO: Once the canary migration is complete, remove any leftover manual
+  `hermes-gateway.service` backups and document the rollback procedure for the
+  module-owned service.
+
 ## Development
 
 ```sh
