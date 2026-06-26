@@ -14,7 +14,7 @@ let
       printf 'HOME=%s\n' "$HOME"
       printf 'HERMES_HOME=%s\n' "$HERMES_HOME"
       printf 'HERMES_MANAGED=%s\n' "$HERMES_MANAGED"
-      printf 'MESSAGING_CWD=%s\n' "$MESSAGING_CWD"
+      printf 'PWD=%s\n' "$PWD"
       printf 'PATH=%s\n' "$PATH"
     } > "$HERMES_HOME/instrumentation/gateway.log"
 
@@ -298,7 +298,8 @@ pkgs.testers.runNixOSTest {
     machine.succeed("grep -F 'HOME=/home/hermes-test' /home/hermes-test/.hermes/instrumentation/gateway.log")
     machine.succeed("grep -F 'HERMES_HOME=/home/hermes-test/.hermes' /home/hermes-test/.hermes/instrumentation/gateway.log")
     machine.succeed("grep -F 'HERMES_MANAGED=true' /home/hermes-test/.hermes/instrumentation/gateway.log")
-    machine.succeed("grep -F 'MESSAGING_CWD=/home/hermes-test' /home/hermes-test/.hermes/instrumentation/gateway.log")
+    machine.succeed("grep -F 'PWD=/home/hermes-test' /home/hermes-test/.hermes/instrumentation/gateway.log")
+    machine.fail("grep -F 'MESSAGING_CWD=' /home/hermes-test/.hermes/instrumentation/gateway.log")
     machine.succeed("grep -F '${pkgs.git}' /home/hermes-test/.hermes/instrumentation/gateway.log")
 
     honcho_uid = machine.succeed("id -u honcho-test").strip()

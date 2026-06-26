@@ -13,7 +13,7 @@ let
       printf 'HOME=%s\n' "$HOME"
       printf 'HERMES_HOME=%s\n' "$HERMES_HOME"
       printf 'HERMES_MANAGED=%s\n' "$HERMES_MANAGED"
-      printf 'MESSAGING_CWD=%s\n' "$MESSAGING_CWD"
+      printf 'PWD=%s\n' "$PWD"
       printf 'PATH=%s\n' "$PATH"
       printf 'TIRITH_BIN=%s\n' "''${TIRITH_BIN:-}"
       printf 'PYTHONPATH=%s\n' "''${PYTHONPATH:-}"
@@ -167,7 +167,8 @@ pkgs.testers.runNixOSTest {
     machine.succeed(f"{user_systemctl} start hermes-gateway.service")
     machine.wait_until_succeeds(f"{user_systemctl} is-active --quiet hermes-gateway.service")
     machine.wait_until_succeeds("grep -F 'args=gateway run --replace' /home/hermes-state/.hermes/instrumentation/gateway.log")
-    machine.succeed("grep -F 'MESSAGING_CWD=/home/hermes-state/.hermes' /home/hermes-state/.hermes/instrumentation/gateway.log")
+    machine.succeed("grep -F 'PWD=/home/hermes-state/.hermes' /home/hermes-state/.hermes/instrumentation/gateway.log")
+    machine.fail("grep -F 'MESSAGING_CWD=' /home/hermes-state/.hermes/instrumentation/gateway.log")
     machine.succeed("grep -F 'TIRITH_BIN=/run/current-system/sw/bin/tirith' /home/hermes-state/.hermes/instrumentation/gateway.log")
     machine.succeed("grep -F 'PYTHONPATH=/home/hermes-state/.hermes/python-deps/honcho-ai' /home/hermes-state/.hermes/instrumentation/gateway.log")
   '';

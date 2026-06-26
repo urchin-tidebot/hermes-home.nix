@@ -203,7 +203,6 @@ let
     "HOME=${config.home.homeDirectory}"
     "HERMES_HOME=${cfg.hermesHome}"
     "HERMES_MANAGED=true"
-    "MESSAGING_CWD=${cfg.workingDirectory}"
     "PATH=${servicePath}"
   ]
   ++ mapAttrsToList (name: value: "${name}=${value}") cfg.service.environment;
@@ -308,7 +307,12 @@ in
       type = types.str;
       default = config.home.homeDirectory;
       defaultText = literalExpression "config.home.homeDirectory";
-      description = "Default working directory exposed to Hermes as MESSAGING_CWD.";
+      description = ''
+        WorkingDirectory for the Hermes gateway service. To set Hermes'
+        terminal working directory, use programs.hermes-agent.settings.terminal.cwd
+        or runtime `hermes config set terminal.cwd ...`; the deprecated
+        MESSAGING_CWD environment variable is intentionally not exported.
+      '';
     };
 
     settings = mkOption {
