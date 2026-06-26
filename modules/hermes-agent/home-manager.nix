@@ -625,6 +625,41 @@ in
         description = "systemd RestartSec= value for the gateway user service.";
       };
 
+      unitConfig = mkOption {
+        type = types.attrsOf types.anything;
+        default = { };
+        description = ''
+          Additional systemd Unit settings merged into the generated
+          hermes-gateway.service. Use this during migrations to preserve
+          production lifecycle ordering while keeping one module as the sole
+          owner of the unit.
+        '';
+        example = literalExpression ''
+          {
+            StartLimitIntervalSec = 0;
+          }
+        '';
+      };
+
+      serviceConfig = mkOption {
+        type = types.attrsOf types.anything;
+        default = { };
+        description = ''
+          Additional systemd Service settings merged into the generated
+          hermes-gateway.service. Values here override the module defaults when
+          keys overlap, so prefer programs.hermes-agent.service.environment for
+          additive service environment variables.
+        '';
+        example = literalExpression ''
+          {
+            Restart = "always";
+            KillMode = "mixed";
+            ExecReload = "${pkgs.coreutils}/bin/kill -USR1 $MAINPID";
+            TimeoutStopSec = "210s";
+          }
+        '';
+      };
+
       voiceModes = mkOption {
         type = types.attrsOf types.bool;
         default = { };
@@ -855,7 +890,8 @@ in
           Description = "Hermes Agent gateway";
           After = [ "network-online.target" ];
           Wants = [ "network-online.target" ];
-        };
+        }
+        // cfg.gateway.unitConfig;
 
         Service = {
           Type = "simple";
@@ -865,7 +901,8 @@ in
           Restart = cfg.gateway.restart;
           RestartSec = cfg.gateway.restartSec;
           UMask = "0077";
-        };
+        }
+        // cfg.gateway.serviceConfig;
 
         Install = {
           WantedBy = [ "default.target" ];
