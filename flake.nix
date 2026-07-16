@@ -70,6 +70,14 @@
               ./tests/managed-cleanup-home.nix
             ];
           };
+          unsafePythonPathConfig = home-manager.lib.homeManagerConfiguration {
+            inherit pkgs;
+            modules = [
+              self.homeManagerModules.default
+              ./tests/unsafe-pythonpath-home.nix
+            ];
+          };
+          unsafePythonPathEvaluation = builtins.tryEval unsafePythonPathConfig.activationPackage.drvPath;
           honchoConfig = home-manager.lib.homeManagerConfiguration {
             inherit pkgs;
             modules = [
@@ -110,6 +118,19 @@
             grep -F -- 'rm -f "$hermes_home/gateway_voice_mode.json"' "$activate"
             grep -F -- 'nix-managed-*' "$activate"
             touch "$out"
+          '';
+          unsafe-pythonpath-rejected = pkgs.runCommand "hermes-unsafe-pythonpath-rejected-check" { } ''
+            ${
+              if unsafePythonPathEvaluation.success then
+                ''
+                  echo "expected service.environment.PYTHONPATH evaluation to fail" >&2
+                  exit 1
+                ''
+              else
+                ''
+                  touch "$out"
+                ''
+            }
           '';
         }
         // lib.optionalAttrs pkgs.stdenv.isLinux {
@@ -169,6 +190,16 @@
           '';
           document-path-quoting = pkgs.runCommand "hermes-document-path-quoting-check" { } ''
             grep -F -- ${lib.escapeShellArg "'/tmp/hermes-home-test/.hermes/notes/shell $(safe).md'"} ${basicConfig.activationPackage}/activate
+            touch "$out"
+          '';
+          gateway-activation-preflight = pkgs.runCommand "hermes-gateway-activation-preflight-check" { } ''
+            activate=${basicConfig.activationPackage}/activate
+            check_script="$(${pkgs.gnugrep}/bin/grep -o '/nix/store/[^ ]*-hermes-gateway-activation-check' "$activate")"
+            test -x "$check_script"
+            grep -F -- 'HERMES_PYTHON_SRC_ROOT' "$check_script"
+            grep -F -- 'pydantic_core._pydantic_core' "$check_script"
+            grep -F -- 'from run_agent import OpenAI' "$check_script"
+            grep -F -- 'hermes-home-activation-check' "$check_script"
             touch "$out"
           '';
           vm-hermes-agent = hermesAgentVmTest;

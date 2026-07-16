@@ -104,7 +104,6 @@ pkgs.testers.runNixOSTest {
 
           service.environment = {
             TIRITH_BIN = "/run/current-system/sw/bin/tirith";
-            PYTHONPATH = "/home/hermes-state/.hermes/python-deps/honcho-ai";
           };
 
           gateway = {
@@ -170,6 +169,6 @@ pkgs.testers.runNixOSTest {
     machine.succeed("grep -F 'PWD=/home/hermes-state/.hermes' /home/hermes-state/.hermes/instrumentation/gateway.log")
     machine.fail("grep -F 'MESSAGING_CWD=' /home/hermes-state/.hermes/instrumentation/gateway.log")
     machine.succeed("grep -F 'TIRITH_BIN=/run/current-system/sw/bin/tirith' /home/hermes-state/.hermes/instrumentation/gateway.log")
-    machine.succeed("grep -F 'PYTHONPATH=/home/hermes-state/.hermes/python-deps/honcho-ai' /home/hermes-state/.hermes/instrumentation/gateway.log")
+    machine.succeed("grep -Fx 'PYTHONPATH=' /home/hermes-state/.hermes/instrumentation/gateway.log")
   '';
 }

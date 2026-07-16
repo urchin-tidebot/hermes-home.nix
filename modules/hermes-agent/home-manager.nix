@@ -207,6 +207,29 @@ let
   ]
   ++ mapAttrsToList (name: value: "${name}=${value}") cfg.service.environment;
 
+  gatewayActivationCheck = pkgs.writeShellScript "hermes-gateway-activation-check" ''
+    set -eu
+
+    executable=${shellQuote effectiveExecutable}
+    hermes_python="$(${pkgs.gnused}/bin/sed -n "s|^export HERMES_PYTHON='\([^']*\)'$|\1|p" "$executable")"
+    hermes_python_src_root="$(${pkgs.gnused}/bin/sed -n "s|^export HERMES_PYTHON_SRC_ROOT='\([^']*\)'$|\1|p" "$executable")"
+
+    if [ -n "$hermes_python" ] && [ -n "$hermes_python_src_root" ]; then
+      PYTHONPATH="$hermes_python_src_root" "$hermes_python" - <<'PY'
+    import pydantic_core._pydantic_core
+    from run_agent import OpenAI
+
+    client = OpenAI(
+        api_key="hermes-home-activation-check",
+        base_url="http://127.0.0.1:9/v1",
+    )
+    client.close()
+    PY
+    else
+      "$executable" --version >/dev/null
+    fi
+  '';
+
   validDocumentPath =
     name:
     let
@@ -664,6 +687,17 @@ in
         '';
       };
 
+      activationCheck.enable = mkOption {
+        type = types.bool;
+        default = true;
+        description = ''
+          Before Home Manager reloads user services, verify that the configured
+          Hermes executable starts. Nix-wrapped Hermes packages additionally
+          import the native Pydantic core module and construct a local OpenAI
+          client without making a network request.
+        '';
+      };
+
       voiceModes = mkOption {
         type = types.attrsOf types.bool;
         default = { };
@@ -776,6 +810,10 @@ in
           assertion = lib.all validMcpServerTransport (lib.attrValues cfg.mcpServers);
           message = "Each programs.hermes-agent.mcpServers entry must set exactly one of command or url, use stdio-only args/env only with command, and use HTTP-only headers/auth only with url.";
         }
+        {
+          assertion = !(cfg.service.environment ? PYTHONPATH) && !(cfg.service.environment ? PYTHONHOME);
+          message = "programs.hermes-agent.service.environment must not set PYTHONPATH or PYTHONHOME; extend the Hermes package with extraPythonPackages/extraDependencyGroups or a Nix package override so native Python dependencies match the packaged interpreter.";
+        }
       ];
 
       home.packages =
@@ -886,6 +924,18 @@ in
           ) cfg.documents
         )
       );
+
+      home.activation.hermesGatewayActivationCheck =
+        mkIf (cfg.gateway.enable && cfg.gateway.activationCheck.enable)
+          (
+            lib.hm.dag.entryBetween [ "reloadSystemd" ] [ "writeBoundary" ] ''
+              ${pkgs.coreutils}/bin/env \
+                -u PYTHONPATH \
+                -u PYTHONHOME \
+                ${lib.concatStringsSep " \\\n          " (map shellQuote serviceEnvironment)} \
+                ${gatewayActivationCheck}
+            ''
+          );
     }
 
     (mkIf cfg.gateway.enable {
