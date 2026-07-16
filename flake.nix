@@ -94,6 +94,9 @@
           honchoApiAfter = builtins.toJSON honchoConfig.config.systemd.user.services.honcho-api.Unit.After;
           honchoEnvironmentFile = builtins.toJSON honchoConfig.config.systemd.user.services.honcho-api.Service.EnvironmentFile;
           basicExecStart = builtins.toJSON basicConfig.config.systemd.user.services.hermes-gateway.Service.ExecStart;
+          basicUnsetEnvironment = builtins.toJSON (
+            basicConfig.config.systemd.user.services.hermes-gateway.Service.UnsetEnvironment or [ ]
+          );
           hermesAgentVmTest = import ./tests/vm-hermes-agent.nix {
             inherit pkgs home-manager;
             hermesModule = self.homeManagerModules.default;
@@ -188,6 +191,17 @@
                 ;;
             esac
           '';
+          gateway-python-environment-sanitized =
+            pkgs.runCommand "hermes-gateway-python-environment-sanitized-check" { }
+              ''
+                case ${lib.escapeShellArg basicUnsetEnvironment} in
+                  *"PYTHONPATH"*"PYTHONHOME"*) touch "$out" ;;
+                  *)
+                    echo "gateway must unset ambient PYTHONPATH and PYTHONHOME: ${lib.escapeShellArg basicUnsetEnvironment}" >&2
+                    exit 1
+                    ;;
+                esac
+              '';
           document-path-quoting = pkgs.runCommand "hermes-document-path-quoting-check" { } ''
             grep -F -- ${lib.escapeShellArg "'/tmp/hermes-home-test/.hermes/notes/shell $(safe).md'"} ${basicConfig.activationPackage}/activate
             touch "$out"

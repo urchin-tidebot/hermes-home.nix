@@ -811,7 +811,9 @@ in
           message = "Each programs.hermes-agent.mcpServers entry must set exactly one of command or url, use stdio-only args/env only with command, and use HTTP-only headers/auth only with url.";
         }
         {
-          assertion = !(cfg.service.environment ? PYTHONPATH) && !(cfg.service.environment ? PYTHONHOME);
+          assertion =
+            !cfg.gateway.enable
+            || (!(cfg.service.environment ? PYTHONPATH) && !(cfg.service.environment ? PYTHONHOME));
           message = "programs.hermes-agent.service.environment must not set PYTHONPATH or PYTHONHOME; extend the Hermes package with extraPythonPackages/extraDependencyGroups or a Nix package override so native Python dependencies match the packaged interpreter.";
         }
       ];
@@ -954,6 +956,10 @@ in
           ExecStart = gatewayCommand;
           Restart = cfg.gateway.restart;
           RestartSec = cfg.gateway.restartSec;
+          UnsetEnvironment = [
+            "PYTHONPATH"
+            "PYTHONHOME"
+          ];
           UMask = "0077";
         }
         // cfg.gateway.serviceConfig;

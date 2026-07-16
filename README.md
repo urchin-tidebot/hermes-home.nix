@@ -141,10 +141,12 @@ The Honcho source pin lives in `modules/honcho/honcho-pkg.nix`. It is intentiona
   required lifecycle knobs through `programs.hermes-agent.gateway.unitConfig`,
   `programs.hermes-agent.gateway.serviceConfig`, and
   `programs.hermes-agent.service.environment`.
-- `service.environment.PYTHONPATH` and `PYTHONHOME` are rejected. Injecting a
-  mutable Python tree can shadow Nix-packaged native extensions with the wrong
-  CPython ABI. Use `extraPythonPackages`, `extraDependencyGroups`, or a package
-  override so Hermes and its Python dependencies are built together.
+- `service.environment.PYTHONPATH` and `PYTHONHOME` are rejected, and the
+  gateway unit explicitly unsets ambient values inherited by the systemd user
+  manager. Injecting a mutable Python tree can shadow Nix-packaged native
+  extensions with the wrong CPython ABI. Use `extraPythonPackages`,
+  `extraDependencyGroups`, or a package override so Hermes and its Python
+  dependencies are built together.
 - `gateway.activationCheck.enable` defaults to true. It runs after Home Manager's
   write boundary but before `reloadSystemd`; set it to false only for a custom
   executable that cannot support even the fallback `hermes --version` probe.
