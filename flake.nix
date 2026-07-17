@@ -94,9 +94,31 @@
           honchoApiAfter = builtins.toJSON honchoConfig.config.systemd.user.services.honcho-api.Unit.After;
           honchoEnvironmentFile = builtins.toJSON honchoConfig.config.systemd.user.services.honcho-api.Service.EnvironmentFile;
           basicExecStart = builtins.toJSON basicConfig.config.systemd.user.services.hermes-gateway.Service.ExecStart;
-          basicUnsetEnvironment = builtins.toJSON (
-            basicConfig.config.systemd.user.services.hermes-gateway.Service.UnsetEnvironment or [ ]
-          );
+          gatewayUnsetEnvironmentConfig = home-manager.lib.homeManagerConfiguration {
+            inherit pkgs;
+            modules = [
+              self.homeManagerModules.default
+              ./tests/gateway-unset-environment-home.nix
+            ];
+          };
+          gatewayUnsetEnvironment =
+            gatewayUnsetEnvironmentConfig.config.systemd.user.services.hermes-gateway.Service.UnsetEnvironment;
+          invalidGatewayUnsetEnvironmentConfig = home-manager.lib.homeManagerConfiguration {
+            inherit pkgs;
+            modules = [
+              self.homeManagerModules.default
+              ./tests/invalid-gateway-unset-environment-home.nix
+            ];
+          };
+          invalidGatewayUnsetEnvironmentEvaluation = builtins.tryEval invalidGatewayUnsetEnvironmentConfig.activationPackage.drvPath;
+          serviceConfigUnsetEnvironmentConfig = home-manager.lib.homeManagerConfiguration {
+            inherit pkgs;
+            modules = [
+              self.homeManagerModules.default
+              ./tests/service-config-unset-environment-home.nix
+            ];
+          };
+          serviceConfigUnsetEnvironmentEvaluation = builtins.tryEval serviceConfigUnsetEnvironmentConfig.activationPackage.drvPath;
           hermesAgentVmTest = import ./tests/vm-hermes-agent.nix {
             inherit pkgs home-manager;
             hermesModule = self.homeManagerModules.default;
@@ -192,15 +214,45 @@
             esac
           '';
           gateway-python-environment-sanitized =
-            pkgs.runCommand "hermes-gateway-python-environment-sanitized-check" { }
+            assert lib.assertMsg (
+              gatewayUnsetEnvironment == [
+                "CUSTOM_LEGACY_VAR"
+                "PYTHONPATH"
+                "PYTHONHOME"
+              ]
+            ) "unexpected gateway UnsetEnvironment value: ${builtins.toJSON gatewayUnsetEnvironment}";
+            pkgs.runCommand "hermes-gateway-python-environment-sanitized-check" { } ''
+              touch "$out"
+            '';
+          gateway-python-environment-invalid-type-rejected =
+            pkgs.runCommand "hermes-gateway-python-environment-invalid-type-rejected-check" { }
               ''
-                case ${lib.escapeShellArg basicUnsetEnvironment} in
-                  *"PYTHONPATH"*"PYTHONHOME"*) touch "$out" ;;
-                  *)
-                    echo "gateway must unset ambient PYTHONPATH and PYTHONHOME: ${lib.escapeShellArg basicUnsetEnvironment}" >&2
-                    exit 1
-                    ;;
-                esac
+                ${
+                  if invalidGatewayUnsetEnvironmentEvaluation.success then
+                    ''
+                      echo "expected gateway.unsetEnvironment with a non-string element to fail" >&2
+                      exit 1
+                    ''
+                  else
+                    ''
+                      touch "$out"
+                    ''
+                }
+              '';
+          gateway-service-config-unset-rejected =
+            pkgs.runCommand "hermes-gateway-service-config-unset-rejected-check" { }
+              ''
+                ${
+                  if serviceConfigUnsetEnvironmentEvaluation.success then
+                    ''
+                      echo "expected gateway.serviceConfig.UnsetEnvironment to fail" >&2
+                      exit 1
+                    ''
+                  else
+                    ''
+                      touch "$out"
+                    ''
+                }
               '';
           document-path-quoting = pkgs.runCommand "hermes-document-path-quoting-check" { } ''
             grep -F -- ${lib.escapeShellArg "'/tmp/hermes-home-test/.hermes/notes/shell $(safe).md'"} ${basicConfig.activationPackage}/activate
