@@ -207,6 +207,22 @@ let
   ]
   ++ mapAttrsToList (name: value: "${name}=${value}") cfg.service.environment;
 
+  configuredUnsetEnvironment = cfg.gateway.serviceConfig.UnsetEnvironment or [ ];
+  gatewayUnsetEnvironment = lib.unique (
+    (
+      if configuredUnsetEnvironment == null then
+        [ ]
+      else if builtins.isList configuredUnsetEnvironment then
+        configuredUnsetEnvironment
+      else
+        [ configuredUnsetEnvironment ]
+    )
+    ++ [
+      "PYTHONPATH"
+      "PYTHONHOME"
+    ]
+  );
+
   gatewayActivationCheck = pkgs.writeShellScript "hermes-gateway-activation-check" ''
     set -eu
 
@@ -956,13 +972,15 @@ in
           ExecStart = gatewayCommand;
           Restart = cfg.gateway.restart;
           RestartSec = cfg.gateway.restartSec;
-          UnsetEnvironment = [
-            "PYTHONPATH"
-            "PYTHONHOME"
-          ];
           UMask = "0077";
         }
-        // cfg.gateway.serviceConfig;
+        // cfg.gateway.serviceConfig
+        // {
+          # UnsetEnvironment is applied by systemd after Environment,
+          # EnvironmentFile, and PassEnvironment, so these mandatory entries
+          # cannot be bypassed through gateway.serviceConfig.
+          UnsetEnvironment = gatewayUnsetEnvironment;
+        };
 
         Install = {
           WantedBy = [ "default.target" ];

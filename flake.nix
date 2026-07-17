@@ -195,9 +195,9 @@
             pkgs.runCommand "hermes-gateway-python-environment-sanitized-check" { }
               ''
                 case ${lib.escapeShellArg basicUnsetEnvironment} in
-                  *"PYTHONPATH"*"PYTHONHOME"*) touch "$out" ;;
+                  *"CUSTOM_LEGACY_VAR"*"PYTHONPATH"*"PYTHONHOME"*) touch "$out" ;;
                   *)
-                    echo "gateway must unset ambient PYTHONPATH and PYTHONHOME: ${lib.escapeShellArg basicUnsetEnvironment}" >&2
+                    echo "gateway must preserve custom unsets and sanitize PYTHONPATH/PYTHONHOME: ${lib.escapeShellArg basicUnsetEnvironment}" >&2
                     exit 1
                     ;;
                 esac
