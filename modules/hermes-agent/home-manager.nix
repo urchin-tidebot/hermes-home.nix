@@ -48,6 +48,14 @@ let
     merge = _loc: defs: lib.foldl' lib.recursiveUpdate { } (map (def: def.value) defs);
   };
 
+  systemdPrimitiveType = types.oneOf [
+    types.bool
+    types.int
+    types.str
+    types.path
+  ];
+  systemdSettingType = types.either systemdPrimitiveType (types.listOf systemdPrimitiveType);
+
   generatedEdgeTtsWrapper = pkgs.writeTextFile {
     name = "hermes-edge-tts-command.py";
     executable = true;
@@ -207,16 +215,8 @@ let
   ]
   ++ mapAttrsToList (name: value: "${name}=${value}") cfg.service.environment;
 
-  configuredUnsetEnvironment = cfg.gateway.serviceConfig.UnsetEnvironment or [ ];
   gatewayUnsetEnvironment = lib.unique (
-    (
-      if configuredUnsetEnvironment == null then
-        [ ]
-      else if builtins.isList configuredUnsetEnvironment then
-        configuredUnsetEnvironment
-      else
-        [ configuredUnsetEnvironment ]
-    )
+    cfg.gateway.unsetEnvironment
     ++ [
       "PYTHONPATH"
       "PYTHONHOME"
@@ -669,7 +669,7 @@ in
       };
 
       unitConfig = mkOption {
-        type = types.attrsOf types.anything;
+        type = types.attrsOf systemdSettingType;
         default = { };
         description = ''
           Additional systemd Unit settings merged into the generated
@@ -684,14 +684,24 @@ in
         '';
       };
 
+      unsetEnvironment = mkOption {
+        type = types.listOf types.str;
+        default = [ ];
+        description = ''
+          Additional environment variable names removed from the gateway
+          process by systemd. PYTHONPATH and PYTHONHOME are always removed.
+        '';
+      };
+
       serviceConfig = mkOption {
-        type = types.attrsOf types.anything;
+        type = types.attrsOf systemdSettingType;
         default = { };
         description = ''
           Additional systemd Service settings merged into the generated
-          hermes-gateway.service. Values here override the module defaults when
-          keys overlap, so prefer programs.hermes-agent.service.environment for
-          additive service environment variables.
+          hermes-gateway.service. Values here override module defaults except
+          UnsetEnvironment, which must be configured through
+          gateway.unsetEnvironment. Prefer service.environment for additive
+          service environment variables.
         '';
         example = literalExpression ''
           {
@@ -831,6 +841,10 @@ in
             !cfg.gateway.enable
             || (!(cfg.service.environment ? PYTHONPATH) && !(cfg.service.environment ? PYTHONHOME));
           message = "programs.hermes-agent.service.environment must not set PYTHONPATH or PYTHONHOME; extend the Hermes package with extraPythonPackages/extraDependencyGroups or a Nix package override so native Python dependencies match the packaged interpreter.";
+        }
+        {
+          assertion = !(cfg.gateway.serviceConfig ? UnsetEnvironment);
+          message = "programs.hermes-agent.gateway.serviceConfig.UnsetEnvironment is unsupported; use the typed programs.hermes-agent.gateway.unsetEnvironment option. PYTHONPATH and PYTHONHOME are always removed.";
         }
       ];
 

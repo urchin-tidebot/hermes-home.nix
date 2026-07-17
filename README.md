@@ -139,11 +139,19 @@ The Honcho source pin lives in `modules/honcho/honcho-pkg.nix`. It is intentiona
 - For stateful migrations, keep one owner for `hermes-gateway.service`: remove
   any hand-written `systemd.user.services.hermes-gateway` declaration and carry
   required lifecycle knobs through `programs.hermes-agent.gateway.unitConfig`,
-  `programs.hermes-agent.gateway.serviceConfig`, and
-  `programs.hermes-agent.service.environment`.
+  `programs.hermes-agent.gateway.serviceConfig`,
+  `programs.hermes-agent.gateway.unsetEnvironment`, and
+  `programs.hermes-agent.service.environment`. Directly overriding the generated
+  Home Manager unit is outside the supported module contract.
 - `service.environment.PYTHONPATH` and `PYTHONHOME` are rejected, and the
   gateway unit explicitly unsets ambient values inherited by the systemd user
-  manager. Injecting a mutable Python tree can shadow Nix-packaged native
+  manager. `gateway.serviceConfig.UnsetEnvironment` is rejected in favor of the
+  typed `gateway.unsetEnvironment` option; the module always adds `PYTHONPATH`
+  and `PYTHONHOME`. systemd applies these unsets after `Environment`,
+  `EnvironmentFile`, and `PassEnvironment`, sanitizing the environment supplied
+  to the configured service process. A custom `ExecStart` can still deliberately
+  construct a different environment and is responsible for its own isolation.
+  Injecting a mutable Python tree can shadow Nix-packaged native
   extensions with the wrong CPython ABI. Use `extraPythonPackages`,
   `extraDependencyGroups`, or a package override so Hermes and its Python
   dependencies are built together.

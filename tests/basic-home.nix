@@ -35,7 +35,6 @@
     documents."notes/shell $(safe).md" = "Document paths are shell-quoted.";
     gateway = {
       enable = true;
-      serviceConfig.UnsetEnvironment = [ "CUSTOM_LEGACY_VAR" ];
       voiceModes."telegram:-1001234567890" = true;
     };
   };
