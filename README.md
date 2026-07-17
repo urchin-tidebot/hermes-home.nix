@@ -18,6 +18,9 @@ Early design/prototype. The module evaluates and has a basic Home Manager check,
 - Optional auth seed file for `auth.json`.
 - Optional `systemd.user.services.hermes-gateway` service.
 - Gateway service `PATH` composition with Hermes plus `extraPackages`.
+- Switch-time gateway activation check: validates the Hermes executable before
+  systemd reloads it, including Pydantic's native module and local OpenAI client
+  construction for compatible Nix wrappers.
 - Gateway `unitConfig`/`serviceConfig` passthroughs for preserving existing
   stateful `systemd --user` lifecycle semantics during migration.
 - Declarative `mcpServers`, rendered into Hermes `settings.mcp_servers`.
@@ -138,6 +141,15 @@ The Honcho source pin lives in `modules/honcho/honcho-pkg.nix`. It is intentiona
   required lifecycle knobs through `programs.hermes-agent.gateway.unitConfig`,
   `programs.hermes-agent.gateway.serviceConfig`, and
   `programs.hermes-agent.service.environment`.
+- `service.environment.PYTHONPATH` and `PYTHONHOME` are rejected, and the
+  gateway unit explicitly unsets ambient values inherited by the systemd user
+  manager. Injecting a mutable Python tree can shadow Nix-packaged native
+  extensions with the wrong CPython ABI. Use `extraPythonPackages`,
+  `extraDependencyGroups`, or a package override so Hermes and its Python
+  dependencies are built together.
+- `gateway.activationCheck.enable` defaults to true. It runs after Home Manager's
+  write boundary but before `reloadSystemd`; set it to false only for a custom
+  executable that cannot support even the fallback `hermes --version` probe.
 - `mcpServers`, `extraPackages`, `extraPlugins`, `authFile`, and config merging intentionally mirror the relevant user-level pieces of upstream `services.hermes-agent`.
 - The Home Manager module is user-level only. For a system-level `/var/lib/hermes` deployment, prefer upstream's NixOS module.
 - `services.honcho.localServices.postgres` and `services.honcho.localServices.redis` run local user-level backing services for convenience; they are intentionally bound to localhost and store state under XDG/Honcho data directories rather than managing system users, firewall, or `/var/lib` state.
