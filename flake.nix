@@ -70,6 +70,36 @@
               ./tests/managed-cleanup-home.nix
             ];
           };
+          validationConfig = home-manager.lib.homeManagerConfiguration {
+            inherit pkgs;
+            modules = [
+              self.homeManagerModules.default
+              {
+                home.username = "hermes-test";
+                home.homeDirectory = "/tmp/hermes-home-test";
+                home.stateVersion = "24.11";
+                programs.hermes-agent = {
+                  enable = true;
+                  addToPackages = false;
+                  package = builtins.derivation {
+                    name = "plain-hermes-package";
+                    inherit system;
+                    builder = "${pkgs.bash}/bin/bash";
+                    args = [
+                      "-c"
+                      "touch $out"
+                    ];
+                  };
+                  extraDependencyGroups = [ "voice" ];
+                  environment."INVALID-NAME" = "value";
+                  service.environment.VALID_NAME = "line one\nline two";
+                };
+              }
+            ];
+          };
+          validationFailures = map (entry: entry.message) (
+            lib.filter (entry: !entry.assertion) validationConfig.config.assertions
+          );
           unsafePythonPathConfig = home-manager.lib.homeManagerConfiguration {
             inherit pkgs;
             modules = [
@@ -138,12 +168,24 @@
           activation-paths = activationPathsConfig.activationPackage;
           managed-cleanup = pkgs.runCommand "hermes-managed-cleanup-check" { } ''
             activate=${managedCleanupConfig.activationPackage}/activate
-            grep -F -- 'rm -f "$hermes_home/config.yaml"' "$activate"
-            grep -F -- 'rm -f "$hermes_home/.env"' "$activate"
-            grep -F -- 'rm -f "$hermes_home/gateway_voice_mode.json"' "$activate"
+            grep -F -- '/bin/rm -f "$hermes_home/config.yaml"' "$activate"
+            grep -F -- '/bin/rm -f "$hermes_home/.env"' "$activate"
+            grep -F -- '/bin/rm -f "$hermes_home/gateway_voice_mode.json"' "$activate"
             grep -F -- 'nix-managed-*' "$activate"
             touch "$out"
           '';
+          option-validation =
+            pkgs.runCommand "hermes-option-validation-check"
+              {
+                failures = builtins.toJSON validationFailures;
+                passAsFile = [ "failures" ];
+              }
+              ''
+                grep -F -- 'package to expose an override function' "$failuresPath"
+                grep -F -- 'programs.hermes-agent.environment names must match' "$failuresPath"
+                grep -F -- 'programs.hermes-agent.service.environment names must match' "$failuresPath"
+                touch "$out"
+              '';
           unsafe-pythonpath-rejected = pkgs.runCommand "hermes-unsafe-pythonpath-rejected-check" { } ''
             ${
               if unsafePythonPathEvaluation.success then
