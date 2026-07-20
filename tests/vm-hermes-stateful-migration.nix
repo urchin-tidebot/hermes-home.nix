@@ -17,6 +17,7 @@ let
       printf 'PATH=%s\n' "$PATH"
       printf 'TIRITH_BIN=%s\n' "''${TIRITH_BIN:-}"
       printf 'PYTHONPATH=%s\n' "''${PYTHONPATH:-}"
+      printf 'PYTHONHOME=%s\n' "''${PYTHONHOME:-}"
     } > "$HERMES_HOME/instrumentation/gateway.log"
 
     if [ "$#" -ge 2 ] && [ "$1" = gateway ] && [ "$2" = run ]; then
@@ -28,6 +29,11 @@ let
 
   authSeed = pkgs.writeText "hermes-migration-auth.json" ''
     {"provider":"new-seed-should-not-overwrite"}
+  '';
+
+  contaminatedEnvironment = pkgs.writeText "hermes-contaminated-environment" ''
+    PYTHONPATH=/mutable/python/packages
+    PYTHONHOME=/mutable/python/home
   '';
 
   pythonWithYaml = pkgs.python3.withPackages (ps: [ ps.pyyaml ]);
@@ -104,14 +110,18 @@ pkgs.testers.runNixOSTest {
 
           service.environment = {
             TIRITH_BIN = "/run/current-system/sw/bin/tirith";
-            PYTHONPATH = "/home/hermes-state/.hermes/python-deps/honcho-ai";
           };
 
           gateway = {
             enable = true;
             restart = "always";
+            unsetEnvironment = [
+              "CUSTOM_LEGACY_VAR"
+              "PYTHONPATH"
+            ];
             unitConfig.StartLimitIntervalSec = 0;
             serviceConfig = {
+              EnvironmentFile = contaminatedEnvironment;
               KillMode = "mixed";
               KillSignal = "SIGTERM";
               ExecReload = "${pkgs.coreutils}/bin/kill -USR1 $MAINPID";
@@ -163,6 +173,10 @@ pkgs.testers.runNixOSTest {
     machine.succeed(f"{user_systemctl} cat hermes-gateway.service | grep -F 'TimeoutStopSec=210s'")
     machine.succeed(f"{user_systemctl} cat hermes-gateway.service | grep -F 'RestartForceExitStatus=75'")
     machine.succeed(f"{user_systemctl} cat hermes-gateway.service | grep -F 'StartLimitIntervalSec=0'")
+    machine.succeed(f"{user_systemctl} cat hermes-gateway.service | grep -F 'EnvironmentFile=${contaminatedEnvironment}'")
+    machine.succeed(f"{user_systemctl} cat hermes-gateway.service | grep -F 'UnsetEnvironment=CUSTOM_LEGACY_VAR'")
+    machine.succeed(f"{user_systemctl} cat hermes-gateway.service | grep -F 'UnsetEnvironment=PYTHONPATH'")
+    machine.succeed(f"{user_systemctl} cat hermes-gateway.service | grep -F 'UnsetEnvironment=PYTHONHOME'")
 
     machine.succeed(f"{user_systemctl} start hermes-gateway.service")
     machine.wait_until_succeeds(f"{user_systemctl} is-active --quiet hermes-gateway.service")
@@ -170,6 +184,7 @@ pkgs.testers.runNixOSTest {
     machine.succeed("grep -F 'PWD=/home/hermes-state/.hermes' /home/hermes-state/.hermes/instrumentation/gateway.log")
     machine.fail("grep -F 'MESSAGING_CWD=' /home/hermes-state/.hermes/instrumentation/gateway.log")
     machine.succeed("grep -F 'TIRITH_BIN=/run/current-system/sw/bin/tirith' /home/hermes-state/.hermes/instrumentation/gateway.log")
-    machine.succeed("grep -F 'PYTHONPATH=/home/hermes-state/.hermes/python-deps/honcho-ai' /home/hermes-state/.hermes/instrumentation/gateway.log")
+    machine.succeed("grep -Fx 'PYTHONPATH=' /home/hermes-state/.hermes/instrumentation/gateway.log")
+    machine.succeed("grep -Fx 'PYTHONHOME=' /home/hermes-state/.hermes/instrumentation/gateway.log")
   '';
 }

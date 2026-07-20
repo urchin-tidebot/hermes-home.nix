@@ -51,6 +51,14 @@ let
     merge = _loc: defs: lib.foldl' lib.recursiveUpdate { } (map (def: def.value) defs);
   };
 
+  systemdPrimitiveType = types.oneOf [
+    types.bool
+    types.int
+    types.str
+    types.path
+  ];
+  systemdSettingType = types.either systemdPrimitiveType (types.listOf systemdPrimitiveType);
+
   generatedEdgeTtsWrapper = pkgs.writeTextFile {
     name = "hermes-edge-tts-command.py";
     executable = true;
@@ -209,6 +217,37 @@ let
     "PATH=${servicePath}"
   ]
   ++ mapAttrsToList (name: value: "${name}=${value}") cfg.service.environment;
+
+  gatewayUnsetEnvironment = lib.unique (
+    cfg.gateway.unsetEnvironment
+    ++ [
+      "PYTHONPATH"
+      "PYTHONHOME"
+    ]
+  );
+
+  gatewayActivationCheck = pkgs.writeShellScript "hermes-gateway-activation-check" ''
+    set -eu
+
+    executable=${shellQuote effectiveExecutable}
+    hermes_python="$(${pkgs.gnused}/bin/sed -n "s|^export HERMES_PYTHON='\([^']*\)'$|\1|p" "$executable")"
+    hermes_python_src_root="$(${pkgs.gnused}/bin/sed -n "s|^export HERMES_PYTHON_SRC_ROOT='\([^']*\)'$|\1|p" "$executable")"
+
+    if [ -n "$hermes_python" ] && [ -n "$hermes_python_src_root" ]; then
+      PYTHONPATH="$hermes_python_src_root" "$hermes_python" - <<'PY'
+    import pydantic_core._pydantic_core
+    from run_agent import OpenAI
+
+    client = OpenAI(
+        api_key="hermes-home-activation-check",
+        base_url="http://127.0.0.1:9/v1",
+    )
+    client.close()
+    PY
+    else
+      "$executable" --version >/dev/null
+    fi
+  '';
 
   validDocumentPath =
     name:
@@ -645,7 +684,7 @@ in
       };
 
       unitConfig = mkOption {
-        type = types.attrsOf types.anything;
+        type = types.attrsOf systemdSettingType;
         default = { };
         description = ''
           Additional systemd Unit settings merged into the generated
@@ -660,14 +699,24 @@ in
         '';
       };
 
+      unsetEnvironment = mkOption {
+        type = types.listOf types.str;
+        default = [ ];
+        description = ''
+          Additional environment variable names removed from the gateway
+          process by systemd. PYTHONPATH and PYTHONHOME are always removed.
+        '';
+      };
+
       serviceConfig = mkOption {
-        type = types.attrsOf types.anything;
+        type = types.attrsOf systemdSettingType;
         default = { };
         description = ''
           Additional systemd Service settings merged into the generated
-          hermes-gateway.service. Values here override the module defaults when
-          keys overlap, so prefer programs.hermes-agent.service.environment for
-          additive service environment variables.
+          hermes-gateway.service. Values here override module defaults except
+          UnsetEnvironment, which must be configured through
+          gateway.unsetEnvironment. Prefer service.environment for additive
+          service environment variables.
         '';
         example = literalExpression ''
           {
@@ -676,6 +725,17 @@ in
             ExecReload = "${pkgs.coreutils}/bin/kill -USR1 $MAINPID";
             TimeoutStopSec = "210s";
           }
+        '';
+      };
+
+      activationCheck.enable = mkOption {
+        type = types.bool;
+        default = true;
+        description = ''
+          Before Home Manager reloads user services, verify that the configured
+          Hermes executable starts. Nix-wrapped Hermes packages additionally
+          import the native Pydantic core module and construct a local OpenAI
+          client without making a network request.
         '';
       };
 
@@ -806,6 +866,16 @@ in
           assertion = validEnvironment cfg.service.environment;
           message = "programs.hermes-agent.service.environment names must match ^[A-Za-z_][A-Za-z0-9_]*$ and values must not contain newline characters.";
         }
+        {
+          assertion =
+            !cfg.gateway.enable
+            || (!(cfg.service.environment ? PYTHONPATH) && !(cfg.service.environment ? PYTHONHOME));
+          message = "programs.hermes-agent.service.environment must not set PYTHONPATH or PYTHONHOME; extend the Hermes package with extraPythonPackages/extraDependencyGroups or a Nix package override so native Python dependencies match the packaged interpreter.";
+        }
+        {
+          assertion = !(cfg.gateway.serviceConfig ? UnsetEnvironment);
+          message = "programs.hermes-agent.gateway.serviceConfig.UnsetEnvironment is unsupported; use the typed programs.hermes-agent.gateway.unsetEnvironment option. PYTHONPATH and PYTHONHOME are always removed.";
+        }
       ];
 
       home.packages =
@@ -916,6 +986,18 @@ in
           ) cfg.documents
         )
       );
+
+      home.activation.hermesGatewayActivationCheck =
+        mkIf (cfg.gateway.enable && cfg.gateway.activationCheck.enable)
+          (
+            lib.hm.dag.entryBetween [ "reloadSystemd" ] [ "writeBoundary" ] ''
+              ${pkgs.coreutils}/bin/env \
+                -u PYTHONPATH \
+                -u PYTHONHOME \
+                ${lib.concatStringsSep " \\\n          " (map shellQuote serviceEnvironment)} \
+                ${gatewayActivationCheck}
+            ''
+          );
     }
 
     (mkIf cfg.gateway.enable {
@@ -936,7 +1018,13 @@ in
           RestartSec = cfg.gateway.restartSec;
           UMask = "0077";
         }
-        // cfg.gateway.serviceConfig;
+        // cfg.gateway.serviceConfig
+        // {
+          # UnsetEnvironment is applied by systemd after Environment,
+          # EnvironmentFile, and PassEnvironment, so these mandatory entries
+          # cannot be bypassed through gateway.serviceConfig.
+          UnsetEnvironment = gatewayUnsetEnvironment;
+        };
 
         Install = {
           WantedBy = [ "default.target" ];
