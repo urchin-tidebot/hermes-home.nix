@@ -7,9 +7,9 @@
 rec {
   owner = "plastic-labs";
   repo = "honcho";
-  version = "3.0.10";
+  version = "3.0.12";
   rev = "v${version}";
-  hash = "sha256-uiwquPrz1VPUf4dvEHiCiXmvTXH8np5JAC1WlsVENj4=";
+  hash = "sha256-BekiGw5l1eTGbCtGrOcPeJHk/ckJ9pmBJ7r8YXNIMGM=";
 
   src = pkgs.fetchFromGitHub {
     inherit
