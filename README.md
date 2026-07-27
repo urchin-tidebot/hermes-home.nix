@@ -127,7 +127,7 @@ The flake also exposes `homeManagerModules.honcho`, a user-level Home Manager mo
 }
 ```
 
-The Honcho source pin lives in `modules/honcho/honcho-pkg.nix`. It is intentionally separate from the service module so the generalized package-pin updater (`scripts/update-package-pins.py` and `.github/workflows/update-package-pins.yml`) can update the upstream tag/hash in a weekly automated PR.
+The Honcho source pin lives in `modules/honcho/honcho-pkg.nix`. It is intentionally separate from the service module so the generalized package-pin updater (`scripts/update-package-pins.py` and `.github/workflows/update-package-pins.yml`) can update the upstream tag/hash when manually dispatched.
 
 ## Design notes
 

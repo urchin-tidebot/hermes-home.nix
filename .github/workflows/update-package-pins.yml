@@ -2,9 +2,6 @@ name: Update package pins
 
 on:
   workflow_dispatch:
-  schedule:
-    # Weekly on Mondays.
-    - cron: '20 8 * * 1'
 
 permissions:
   contents: write
