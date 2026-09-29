@@ -264,7 +264,11 @@
             test -x "$check_script"
             grep -F -- 'HERMES_PYTHON_SRC_ROOT' "$check_script"
             grep -F -- 'pydantic_core._pydantic_core' "$check_script"
-            grep -F -- 'from run_agent import OpenAI' "$check_script"
+            grep -F -- 'from agent.process_bootstrap import OpenAI' "$check_script"
+            if grep -F -- 'from run_agent import OpenAI' "$check_script"; then
+              echo 'activation check still uses the deprecated OpenAI import' >&2
+              exit 1
+            fi
             grep -F -- 'hermes-home-activation-check' "$check_script"
             touch "$out"
           '';

@@ -233,7 +233,7 @@ let
     if [ -n "$hermes_python" ] && [ -n "$hermes_python_src_root" ]; then
       PYTHONPATH="$hermes_python_src_root" "$hermes_python" - <<'PY'
     import pydantic_core._pydantic_core
-    from run_agent import OpenAI
+    from agent.process_bootstrap import OpenAI
 
     client = OpenAI(
         api_key="hermes-home-activation-check",
