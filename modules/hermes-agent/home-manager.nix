@@ -21,15 +21,18 @@ let
 
   cfg = config.programs.hermes-agent;
 
+  packageOverridesRequested = cfg.extraPythonPackages != [ ] || cfg.extraDependencyGroups != [ ];
+  packageSupportsOverrides = cfg.package != null && cfg.package ? override;
+
   effectivePackage =
     if cfg.package == null then
       null
-    else if cfg.extraPythonPackages == [ ] && cfg.extraDependencyGroups == [ ] then
-      cfg.package
-    else
+    else if packageOverridesRequested && packageSupportsOverrides then
       cfg.package.override {
         inherit (cfg) extraPythonPackages extraDependencyGroups;
-      };
+      }
+    else
+      cfg.package;
 
   effectiveExecutable =
     if cfg.executable != null then
@@ -267,6 +270,15 @@ let
     && (hasCommand || (srv.args == [ ] && srv.env == { }))
     && (hasUrl || (srv.headers == { } && srv.auth == null));
 
+  validEnvironment =
+    environment:
+    lib.all (
+      name:
+      builtins.match "^[A-Za-z_][A-Za-z0-9_]*$" name != null
+      && !(lib.hasInfix "\n" environment.${name})
+      && !(lib.hasInfix "\r" environment.${name})
+    ) (lib.attrNames environment);
+
 in
 {
   options.programs.hermes-agent = {
@@ -312,7 +324,8 @@ in
       default = [ ];
       description = ''
         Python packages passed to package.override when the Hermes package supports
-        extraPythonPackages, matching the upstream NixOS module.
+        extraPythonPackages, matching the upstream NixOS module. Setting this option
+        requires package to expose an override function.
       '';
     };
 
@@ -321,7 +334,8 @@ in
       default = [ ];
       description = ''
         Optional dependency groups passed to package.override when supported by the
-        Hermes package, such as "voice" or other groups declared upstream.
+        Hermes package, such as "voice" or other groups declared upstream. Setting
+        this option requires package to expose an override function.
       '';
     };
 
@@ -434,7 +448,8 @@ in
       default = { };
       description = ''
         Non-secret environment variables merged into $HERMES_HOME/.env.
-        Use environmentFiles for secrets.
+        Names must use shell identifier syntax and values must not contain newline
+        characters. Use environmentFiles for secrets or multiline content.
       '';
       example = literalExpression ''
         {
@@ -743,7 +758,10 @@ in
     service.environment = mkOption {
       type = types.attrsOf types.str;
       default = { };
-      description = "Extra environment variables for the systemd user service only.";
+      description = ''
+        Extra environment variables for the systemd user service only. Names must
+        use shell identifier syntax and values must not contain newline characters.
+      '';
     };
 
     voice = {
@@ -813,6 +831,10 @@ in
           message = "programs.hermes-agent.package must be set when installing Hermes with addToPackages.";
         }
         {
+          assertion = !packageOverridesRequested || packageSupportsOverrides;
+          message = "programs.hermes-agent.extraPythonPackages and extraDependencyGroups require programs.hermes-agent.package to expose an override function.";
+        }
+        {
           assertion = !cfg.gateway.enable || effectiveExecutable != null;
           message = "programs.hermes-agent.package or executable must be set when enabling the gateway service.";
         }
@@ -837,6 +859,14 @@ in
           message = "Each programs.hermes-agent.mcpServers entry must set exactly one of command or url, use stdio-only args/env only with command, and use HTTP-only headers/auth only with url.";
         }
         {
+          assertion = validEnvironment cfg.environment;
+          message = "programs.hermes-agent.environment names must match ^[A-Za-z_][A-Za-z0-9_]*$ and values must not contain newline characters.";
+        }
+        {
+          assertion = validEnvironment cfg.service.environment;
+          message = "programs.hermes-agent.service.environment names must match ^[A-Za-z_][A-Za-z0-9_]*$ and values must not contain newline characters.";
+        }
+        {
           assertion =
             !cfg.gateway.enable
             || (!(cfg.service.environment ? PYTHONPATH) && !(cfg.service.environment ? PYTHONHOME));
@@ -855,74 +885,74 @@ in
         ''
           set -eu
           hermes_home=${shellQuote cfg.hermesHome}
-          install -d -m 700 "$hermes_home"
-          install -d -m 700 "$hermes_home/audio_cache" "$hermes_home/scripts" "$hermes_home/memories"
-          install -d -m 700 "$hermes_home/cron" "$hermes_home/sessions" "$hermes_home/logs" "$hermes_home/plugins"
+          ${pkgs.coreutils}/bin/install -d -m 700 "$hermes_home"
+          ${pkgs.coreutils}/bin/install -d -m 700 "$hermes_home/audio_cache" "$hermes_home/scripts" "$hermes_home/memories"
+          ${pkgs.coreutils}/bin/install -d -m 700 "$hermes_home/cron" "$hermes_home/sessions" "$hermes_home/logs" "$hermes_home/plugins"
         ''
         + optionalString shouldManageConfig (
           if cfg.configFile != null || !cfg.mergeConfig then
             ''
-              install -m 600 ${shellQuote effectiveConfigFile} "$hermes_home/config.yaml"
+              ${pkgs.coreutils}/bin/install -m 600 ${shellQuote effectiveConfigFile} "$hermes_home/config.yaml"
             ''
           else
             ''
               ${configMergeScript} ${shellQuote generatedConfigFile} "$hermes_home/config.yaml"
-              chmod 600 "$hermes_home/config.yaml"
+              ${pkgs.coreutils}/bin/chmod 600 "$hermes_home/config.yaml"
             ''
         )
         + optionalString shouldRemoveConfig ''
-          rm -f "$hermes_home/config.yaml"
+          ${pkgs.coreutils}/bin/rm -f "$hermes_home/config.yaml"
         ''
         + optionalString shouldManageEnvironment (
           if cfg.environment != { } || cfg.environmentFiles != [ ] then
             ''
               tmp_env="$(${pkgs.coreutils}/bin/mktemp)"
-              cleanup_env() { rm -f "$tmp_env"; }
+              cleanup_env() { ${pkgs.coreutils}/bin/rm -f "$tmp_env"; }
               trap cleanup_env EXIT
             ''
             + optionalString (cfg.environment != { }) ''
-              cat ${shellQuote generatedEnvFile} >> "$tmp_env"
+              ${pkgs.coreutils}/bin/cat ${shellQuote generatedEnvFile} >> "$tmp_env"
             ''
             + lib.concatMapStringsSep "\n" (path: ''
               if [ -f ${shellQuote path} ]; then
-                cat ${shellQuote path} >> "$tmp_env"
-                printf '\n' >> "$tmp_env"
+                ${pkgs.coreutils}/bin/cat ${shellQuote path} >> "$tmp_env"
+                ${pkgs.coreutils}/bin/printf '\n' >> "$tmp_env"
               else
-                printf '%s\n' ${shellQuote "warning: Hermes environment file not found: ${path}"} >&2
+                ${pkgs.coreutils}/bin/printf '%s\n' ${shellQuote "warning: Hermes environment file not found: ${path}"} >&2
               fi
             '') cfg.environmentFiles
             + ''
-              install -m 600 "$tmp_env" "$hermes_home/.env"
+              ${pkgs.coreutils}/bin/install -m 600 "$tmp_env" "$hermes_home/.env"
             ''
           else
             ''
-              rm -f "$hermes_home/.env"
+              ${pkgs.coreutils}/bin/rm -f "$hermes_home/.env"
             ''
         )
         + optionalString (cfg.authFile != null) (
           if cfg.authFileForceOverwrite then
             ''
-              install -m 600 ${shellQuote cfg.authFile} "$hermes_home/auth.json"
+              ${pkgs.coreutils}/bin/install -m 600 ${shellQuote cfg.authFile} "$hermes_home/auth.json"
             ''
           else
             ''
               if [ ! -f "$hermes_home/auth.json" ]; then
-                install -m 600 ${shellQuote cfg.authFile} "$hermes_home/auth.json"
+                ${pkgs.coreutils}/bin/install -m 600 ${shellQuote cfg.authFile} "$hermes_home/auth.json"
               fi
             ''
         )
         + optionalString shouldManageGatewayVoiceModes (
           if cfg.gateway.voiceModes != { } then
             ''
-              install -m 600 ${shellQuote voiceModesFile} "$hermes_home/gateway_voice_mode.json"
+              ${pkgs.coreutils}/bin/install -m 600 ${shellQuote voiceModesFile} "$hermes_home/gateway_voice_mode.json"
             ''
           else
             ''
-              rm -f "$hermes_home/gateway_voice_mode.json"
+              ${pkgs.coreutils}/bin/rm -f "$hermes_home/gateway_voice_mode.json"
             ''
         )
         + optionalString shouldManagePlugins ''
-          find "$hermes_home/plugins" -maxdepth 1 -type l -name 'nix-managed-*' -delete 2>/dev/null || true
+          ${pkgs.findutils}/bin/find "$hermes_home/plugins" -maxdepth 1 -type l -name 'nix-managed-*' -delete 2>/dev/null || true
         ''
         + lib.concatStringsSep "" (
           map (
@@ -932,10 +962,10 @@ in
             in
             ''
               if [ ! -f ${shellQuote plugin}/plugin.yaml ]; then
-                echo "ERROR: extraPlugins entry '${plugin}' has no plugin.yaml" >&2
+                ${pkgs.coreutils}/bin/echo "ERROR: extraPlugins entry '${plugin}' has no plugin.yaml" >&2
                 exit 1
               fi
-              ln -sfn ${shellQuote plugin} "$hermes_home/plugins/nix-managed-${name}"
+              ${pkgs.coreutils}/bin/ln -sfn ${shellQuote plugin} "$hermes_home/plugins/nix-managed-${name}"
             ''
           ) cfg.extraPlugins
         )
@@ -951,7 +981,7 @@ in
               destination = "${cfg.hermesHome}/${name}";
             in
             ''
-              install -D -m 600 ${shellQuote source} ${shellQuote destination}
+              ${pkgs.coreutils}/bin/install -D -m 600 ${shellQuote source} ${shellQuote destination}
             ''
           ) cfg.documents
         )
