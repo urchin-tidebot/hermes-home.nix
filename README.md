@@ -2,11 +2,18 @@
 
 A Home Manager module for declaratively managing [Hermes Agent](https://github.com/NousResearch/hermes-agent) as a user-level Nix/Home Manager setup.
 
-This project exists because upstream Hermes currently ships a NixOS module, while our active setup runs Hermes from a user account with `~/.hermes`, a Home Manager-owned `systemd --user` gateway, Telegram voice mode, and Nix-managed helper scripts. The goal is to make that setup reproducible before we switch to it.
+This project provides an independent Home Manager integration for a user-owned
+`~/.hermes`, a `systemd --user` gateway, Telegram voice mode, and Nix-managed
+helper scripts. Hermes also provides its own [NixOS and Home Manager integrations](https://hermes-agent.nousresearch.com/docs/getting-started/nix-setup);
+compare their current option surfaces before choosing an integration.
 
 ## Status
 
-Early design/prototype. The module evaluates and has a basic Home Manager check, but it is not yet applied to our live Hermes profile.
+The Hermes module is used by our live Home Manager profile. Checks cover config
+merging, generated activation and service settings, and VM-based activation,
+stateful migration, and optional Honcho integration. The live profile leaves
+Hermes configuration, credentials, and plugins runtime-owned; declarative
+ownership of those files is optional.
 
 ## Features
 
