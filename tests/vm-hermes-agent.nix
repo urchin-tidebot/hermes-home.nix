@@ -327,15 +327,9 @@ pkgs.testers.runNixOSTest {
     machine.succeed(f"{honcho_env} ${
       pkgs.postgresql.withPackages (ps: [ ps.pgvector ])
     }/bin/psql -h 127.0.0.1 -p 55432 -d postgres -tAc \"SELECT 1\"")
-    machine.succeed(f"{honcho_env} ${
-      pkgs.postgresql.withPackages (ps: [ ps.pgvector ])
-    }/bin/psql -h 127.0.0.1 -p 55432 -d postgres -v ON_ERROR_STOP=1 -c \"CREATE ROLE honcho LOGIN\" || true")
-    machine.succeed(f"{honcho_env} ${
-      pkgs.postgresql.withPackages (ps: [ ps.pgvector ])
-    }/bin/createdb -h 127.0.0.1 -p 55432 --owner=honcho honcho || true")
-    machine.succeed(f"{honcho_env} ${
-      pkgs.postgresql.withPackages (ps: [ ps.pgvector ])
-    }/bin/psql -h 127.0.0.1 -p 55432 -d honcho -v ON_ERROR_STOP=1 -c \"CREATE EXTENSION IF NOT EXISTS vector\"")
+    # The user manager can already be running Honcho setup through WantedBy.
+    # Join that oneshot instead of racing its role/database/extension creation.
+    machine.succeed(f"{honcho_systemctl} start honcho-setup.service")
     machine.succeed(f"{honcho_env} ${
       pkgs.postgresql.withPackages (ps: [ ps.pgvector ])
     }/bin/psql -h 127.0.0.1 -p 55432 -d honcho -tAc \"SELECT extname FROM pg_extension WHERE extname = 'vector'\" | grep -Fx vector")
@@ -343,7 +337,6 @@ pkgs.testers.runNixOSTest {
     machine.succeed("grep -F 'URL = \"redis://127.0.0.1:6380/0?suppress=true\"' /home/honcho-test/.config/honcho/config.toml")
     machine.succeed(f"{honcho_systemctl} cat honcho-api.service | grep -F 'EnvironmentFile=/etc/honcho-vm/honcho.env'")
 
-    machine.succeed(f"{honcho_systemctl} start honcho-setup.service")
     machine.wait_until_succeeds(f"test \"$({honcho_systemctl} show honcho-setup.service -P Result)\" = success")
     machine.succeed("grep -F 'provisioned=1' /home/honcho-test/.local/share/honcho/instrumentation/setup.log")
     machine.succeed("grep -F 'secret=vm-minimax-key' /home/honcho-test/.local/share/honcho/instrumentation/setup.log")
