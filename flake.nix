@@ -158,7 +158,7 @@
             }
           '';
         }
-        // lib.optionalAttrs pkgs.stdenv.isLinux {
+        // lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
           honcho-home = honchoConfig.activationPackage;
           honcho-api-execstart = pkgs.runCommand "honcho-api-execstart-check" { } ''
             grep -F -- 'uv run --project' ${lib.escapeShellArg honchoApiExecStart}
@@ -258,6 +258,10 @@
             grep -F -- ${lib.escapeShellArg "'/tmp/hermes-home-test/.hermes/notes/shell $(safe).md'"} ${basicConfig.activationPackage}/activate
             touch "$out"
           '';
+          gateway-activation-runtime = import ./tests/gateway-activation-runtime.nix {
+            inherit pkgs home-manager;
+            hermesModule = self.homeManagerModules.default;
+          };
           gateway-activation-preflight = pkgs.runCommand "hermes-gateway-activation-preflight-check" { } ''
             activate=${basicConfig.activationPackage}/activate
             check_script="$(${pkgs.gnugrep}/bin/grep -o '/nix/store/[^ ]*-hermes-gateway-activation-check' "$activate")"
@@ -276,7 +280,7 @@
           vm-hermes-stateful-migration = hermesStatefulMigrationVmTest;
           vm-honcho-e2e = honchoE2eVmTest;
         }
-        // lib.optionalAttrs (!pkgs.stdenv.isLinux) {
+        // lib.optionalAttrs (!pkgs.stdenv.hostPlatform.isLinux) {
           non-gateway = nonGatewayConfig.activationPackage;
         }
       );

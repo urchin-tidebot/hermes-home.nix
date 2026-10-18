@@ -156,8 +156,10 @@ The Honcho source pin lives in `modules/honcho/honcho-pkg.nix`. It is intentiona
   `extraDependencyGroups`, or a package override so Hermes and its Python
   dependencies are built together.
 - `gateway.activationCheck.enable` defaults to true. It runs after Home Manager's
-  write boundary but before `reloadSystemd`; set it to false only for a custom
-  executable that cannot support even the fallback `hermes --version` probe.
+  write boundary but before `reloadSystemd`. Every executable must pass
+  `hermes --version`; recognized Nix wrappers additionally run the native Python
+  import and local OpenAI-client checks, without contacting a provider. Set it
+  to false only for a custom executable that cannot support the version probe.
 - `mcpServers`, `extraPackages`, `extraPlugins`, `authFile`, and config merging intentionally mirror the relevant user-level pieces of upstream `services.hermes-agent`.
 - The Home Manager module is user-level only. For a system-level `/var/lib/hermes` deployment, prefer upstream's NixOS module.
 - `services.honcho.localServices.postgres` and `services.honcho.localServices.redis` run local user-level backing services for convenience; they are intentionally bound to localhost and store state under XDG/Honcho data directories rather than managing system users, firewall, or `/var/lib` state.
@@ -174,10 +176,11 @@ This project borrows design ideas from the following public modules/configuratio
 - [suderman/nixos](https://github.com/suderman/nixos) — no repository license detected at the time of writing. Consulted only to understand deployment requirements; the Honcho module implementation is written around Honcho's own configuration surface and user-level Home Manager services.
 - [plastic-labs/honcho](https://github.com/plastic-labs/honcho) — AGPL-3.0 license. This repository pins/fetches Honcho source but does not vendor it.
 
-## Post-migration TODOs
+## Migration follow-up checklist
 
-These are intentionally tracked in this in-flight migration PR so the first
-Home Manager switch can stay conservative without losing follow-up work:
+After a conservative first switch, review these optional ownership changes.
+Keeping configuration and credentials runtime-owned is also supported; there is
+no requirement to make the entire Hermes home declarative:
 
 - TODO: After the module-owned gateway has run successfully for a few days,
   promote selected stable `~/.hermes/config.yaml` keys into

@@ -228,7 +228,7 @@ in
   config = mkIf cfg.enable {
     assertions = [
       {
-        assertion = pkgs.stdenv.isLinux;
+        assertion = pkgs.stdenv.hostPlatform.isLinux;
         message = "services.honcho currently requires Linux/systemd user services.";
       }
       {

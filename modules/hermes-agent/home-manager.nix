@@ -227,6 +227,8 @@ let
     set -eu
 
     executable=${shellQuote effectiveExecutable}
+    # A working interpreter does not imply the configured CLI itself starts.
+    "$executable" --version >/dev/null
     hermes_python="$(${pkgs.gnused}/bin/sed -n "s|^export HERMES_PYTHON='\([^']*\)'$|\1|p" "$executable")"
     hermes_python_src_root="$(${pkgs.gnused}/bin/sed -n "s|^export HERMES_PYTHON_SRC_ROOT='\([^']*\)'$|\1|p" "$executable")"
 
@@ -241,8 +243,6 @@ let
     )
     client.close()
     PY
-    else
-      "$executable" --version >/dev/null
     fi
   '';
 
@@ -805,7 +805,7 @@ in
     {
       assertions = [
         {
-          assertion = !cfg.gateway.enable || pkgs.stdenv.isLinux;
+          assertion = !cfg.gateway.enable || pkgs.stdenv.hostPlatform.isLinux;
           message = "programs.hermes-agent.gateway.enable currently requires Linux/systemd.";
         }
         {
